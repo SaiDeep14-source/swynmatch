@@ -1,0 +1,124 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { 
+      return request.auth != null; 
+    }
+    
+    function isOwner(userId) { 
+      return isSignedIn() && request.auth.uid == userId; 
+    }
+    
+    function isAdmin() { 
+      return isSignedIn() && (
+        (request.auth.token.email != null && 
+         (request.auth.token.email == 'saideepalahari14@gmail.com' || request.auth.token.email == 'SAIDEEPALAHARI14@GMAIL.COM' || request.auth.token.email == 'sai@swyn.in')) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    // --- User Validation ---
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 256 &&
+             data.role in ['admin', 'member'];
+    }
+
+    // --- Experts Validation ---
+    function isValidExpert(data) {
+      return data.keys().hasAll(['id', 'name', 'status']) &&
+             data.id is string &&
+             data.name is string && data.name.size() <= 200 &&
+             data.status is string && 
+             data.status in ['active', 'busy', 'unavailable', 'pending', 'suspended', 'hidden'];
+    }
+
+    // --- Message Validation ---
+    function isValidMessage(data) {
+      return data.keys().hasAll(['senderEmail', 'senderName', 'content', 'timestamp']) &&
+             data.senderEmail is string && data.senderEmail == request.auth.token.email &&
+             data.senderName is string && data.senderName.size() <= 100 &&
+             data.content is string && data.content.size() <= 2000 &&
+             data.timestamp is number;
+    }
+
+    // --- User Collection ---
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      
+      allow create: if isSignedIn() && 
+                      isOwner(userId) && 
+                      isValidUser(incoming()) &&
+                      (incoming().role == 'member' || request.auth.token.email == 'saideepalahari14@gmail.com' || request.auth.token.email == 'sai@swyn.in');
+      
+      allow update: if isSignedIn() && (
+        // Admin can update profile or roles (Verify whole document integrity)
+        (isAdmin() && isValidUser(incoming())) ||
+        // Users can update their own profile but NOT their role
+        (isOwner(userId) && 
+         isValidUser(incoming()) && 
+         incoming().role == existing().role && 
+         incoming().uid == existing().uid &&
+         incoming().email == existing().email &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'createdAt', 'updatedAt']))
+      );
+    }
+
+    // --- Experts Collection ---
+    match /experts/{expertId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // --- Messages Collection ---
+    match /messages/{messageId} {
+      // Allow reading history if signed in
+      allow list: if isSignedIn();
+      allow get: if isSignedIn();
+      
+      // Allow sending messages if signed in
+      allow create: if isSignedIn() && isValidMessage(incoming());
+      
+      // Messages are immutable
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // --- Config Collection ---
+    match /config/{configId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- Sheets Collection ---
+    match /sheets/{sheetId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() && 
+                            incoming().id is string && 
+                            incoming().url is string;
+      allow delete: if isAdmin();
+    }
+
+    // --- Matches Collection ---
+    match /matches/{matchId} {
+      allow list: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow get: if isSignedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+  }
+}

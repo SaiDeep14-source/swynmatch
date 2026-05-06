@@ -1,0 +1,110 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "System user with role-based access control",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "member"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Expert": {
+      "title": "Expert",
+      "description": "An expert available for matching",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "bio": { "type": "string" },
+        "experience": { "type": "array" },
+        "tags": { "type": "array" },
+        "achievements": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "busy", "unavailable", "pending", "suspended", "hidden"] },
+        "metadata": { "type": "object" }
+      },
+      "required": ["id", "name", "status"]
+    },
+    "AppConfig": {
+      "title": "App Configuration",
+      "description": "Global settings for the application",
+      "type": "object",
+      "properties": {
+        "sheetSources": { "type": "string" },
+        "lastSynced": { "type": "string" }
+      }
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A message sent in the internal chat",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderEmail": { "type": "string" },
+        "senderName": { "type": "string" },
+        "content": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["senderEmail", "senderName", "content", "timestamp"]
+    },
+    "MatchResult": {
+      "title": "Match Result",
+      "description": "Persistence of a matching engine operation",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "input": { "type": "string" },
+        "analysis": { "type": "object" },
+        "matches": { "type": "array" },
+        "timestamp": { "type": "number" },
+        "chatHistory": { "type": "array" },
+        "selectedExpertId": { "type": "string" }
+      },
+      "required": ["userId", "input", "analysis", "matches", "timestamp"]
+    },
+    "SheetSource": {
+      "title": "Sheet Source",
+      "description": "Configuration for a Google Sheet integration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "url": { "type": "string" },
+        "name": { "type": "string" },
+        "lastSynced": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "error"] }
+      },
+      "required": ["id", "url"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Core user metadata and roles"
+    },
+    "/experts/{expertId}": {
+      "schema": "Expert",
+      "description": "Pool of experts"
+    },
+    "/messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Internal chat messages"
+    },
+    "/config/{configId}": {
+      "schema": "AppConfig",
+      "description": "App-wide persistent settings"
+    },
+    "/matches/{matchId}": {
+      "schema": "MatchResult",
+      "description": "Historical match results"
+    },
+    "/sheets/{sheetId}": {
+      "schema": "SheetSource",
+      "description": "Managed Google Sheet sources"
+    }
+  }
+}
