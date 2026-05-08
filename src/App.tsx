@@ -28,7 +28,7 @@ import { UserManagement } from './components/admin/UserManagement';
 import { AdminStats, AdminConfig } from './components/admin/AdminPortal';
 import { ExpertManagement } from './components/admin/ExpertManagement';
 import { ExpertSynthesis } from './components/matching/ExpertSynthesis';
-import { MatchingProvider } from './contexts/MatchingContext';
+import { MatchingProvider, useMatching } from './contexts/MatchingContext';
 import { auth, db } from './lib/firebase';
 
 const Logo = ({ className = "w-8 h-8" }: { className?: string }) => (
@@ -183,6 +183,7 @@ const LoginPage = () => {
 
 const DashboardPage = () => {
   const navigate = useNavigate();
+  const { tokenUsage } = useMatching();
   const [counts, setCounts] = useState({
     experts: 0,
     totalMatches: 0
@@ -276,7 +277,7 @@ const DashboardPage = () => {
               <Sparkles className="absolute top-8 right-8 w-10 h-10 text-primary opacity-20 group-hover:scale-150 group-hover:rotate-12 transition-all duration-700" />
               <h4 className="text-2xl font-light mb-8 tracking-tight">System Status</h4>
               <p className="text-sm text-slate-400 leading-relaxed italic border-l-2 border-primary pl-8 py-4 bg-white/5 rounded-r-2xl">
-                Ready to analyze expert suitability. Current core: Gemini Flash Latest.
+                Ready to analyze expert suitability. Current core: Gemini 2.5 Flash.
               </p>
             </div>
             
@@ -287,8 +288,8 @@ const DashboardPage = () => {
                </div>
                <div className="space-y-6">
                  {[
-                   { label: 'Gemini Flash', value: 'Active Core Agent' },
-                   { label: 'Token Utilization', value: 'Optimized Parsing' },
+                  { label: 'Gemini 2.5 Flash', value: 'Active Core Agent' },
+                   { label: 'Token Utilization', value: tokenUsage > 0 ? `${tokenUsage.toLocaleString()} tokens` : 'Awaiting requests' },
                    { label: 'Sheet Synchronization', value: 'Synced' }
                  ].map(item => (
                    <div key={item.label} className="group cursor-default">

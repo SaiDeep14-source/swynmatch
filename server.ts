@@ -4,29 +4,77 @@ import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 
-dotenv.config();
+dotenv.config({ override: true });
 
 // Ensure AI proxy uses server-side key
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let ai: GoogleGenAI | null = null;
+const getAi = () => {
+  if (!ai) {
+    if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not defined");
+    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
+  return ai;
+};
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '50mb' }));
+
+  // Global error handler for JSON parsing errors
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err instanceof SyntaxError && 'body' in err) {
+      console.error("Malformed JSON detected:", err.message);
+      return res.status(400).json({ error: "Invalid JSON payload" });
+    }
+    next();
+  });
 
   // --- API Routes ---
+
+  app.get("/api/env", (req, res) => {
+    res.json({ 
+      keys: Object.keys(process.env).filter(k => k.includes("GEM") || k.includes("API") || k.includes("KEY") || k.includes("GOOGLE") || k.includes("AI")),
+      nextPubKeyPrefix: process.env.NEXT_PUBLIC_GEMINI_API_KEY ? process.env.NEXT_PUBLIC_GEMINI_API_KEY.substring(0, 4) : 'NONE',
+      geminiKeyPrefix: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.substring(0, 4) : 'NONE'
+    });
+  });
+
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+    const key = process.env.GEMINI_API_KEY;
+    const keyPrefix = key ? key.substring(0, 4) : "NONE";
+    const keyLength = key ? key.length : 0;
+    res.json({ status: "ok", keyPrefix, keyLength });
   });
 
   app.post("/api/gemini/generateContent", async (req, res) => {
     try {
-      const response = await ai.models.generateContent(req.body);
-      res.json({ text: response.text });
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(400).json({ error: "API key not found. Please set GEMINI_API_KEY in your environment variables." });
+      }
+      
+      console.info(`Requesting Gemini analysis for model: ${req.body.model}`);
+      const aiInstance = getAi();
+      
+      // Ensure we use a valid model if the client sends a questionable one
+      const payload = { ...req.body };
+      if (!payload.model || payload.model.includes('2.5')) {
+        payload.model = "gemini-3-flash-preview";
+      }
+
+      const response = await aiInstance.models.generateContent(payload);
+      
+      if (!response || !response.text) {
+        console.error("Gemini returned empty response:", response);
+        throw new Error("Empty response from AI");
+      }
+
+      res.json({ text: response.text, usageMetadata: response.usageMetadata });
     } catch (err: any) {
       console.error("Gemini proxy error:", err);
-      res.status(500).json({ error: err.message || "Internal server error" });
+      const statusCode = err.status || (err.message && err.message.includes("API key not valid") ? 401 : 500);
+      res.status(statusCode).json({ error: err.message || "Internal server error" });
     }
   });
 
@@ -58,6 +106,11 @@ async function startServer() {
       console.error('Proxy Error:', err);
       res.status(500).json({ error: "Network error fetching spreadsheet: " + err.message });
     }
+  });
+
+  // API 404 catch-all
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
   });
 
   // Vite middleware for development

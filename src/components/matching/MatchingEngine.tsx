@@ -31,7 +31,10 @@ const generateContent = async (reqBody: any) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(reqBody)
   });
-  if (!res.ok) throw new Error("AI Request failed");
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || "AI Request failed");
+  }
   return await res.json();
 };
 
@@ -89,6 +92,26 @@ const MatchCard = ({ expert, index, onSelect, isSelected }: MatchCardProps) => (
           </span>
         ))}
       </div>
+
+      {expert.metadata && Object.entries(expert.metadata).filter(([_, val]) => typeof val === 'string' && val.startsWith('http')).length > 0 && (
+        <div className="mt-4 pt-4 border-t border-slate-100 flex flex-wrap gap-2">
+          {Object.entries(expert.metadata)
+            .filter(([_, val]) => typeof val === 'string' && val.startsWith('http'))
+            .map(([key, val]) => (
+              <a 
+                key={key} 
+                href={val as string} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/5 text-primary text-[10px] font-bold uppercase tracking-wide rounded-lg border border-primary/10 hover:bg-primary hover:text-white transition-colors"
+                title={`Open ${key} Document`}
+              >
+                <FileText className="w-3 h-3" />
+                {key}
+              </a>
+          ))}
+        </div>
+      )}
       
       <div className="grid grid-cols-2 gap-4 mt-6">
         <button className="flex items-center justify-center gap-2 py-3 bg-slate-50 text-slate-900 text-[8px] font-bold uppercase tracking-[0.2em] rounded-xl border border-slate-200 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all">
@@ -112,7 +135,7 @@ import { useMatching } from '../../contexts/MatchingContext';
 
 export const MatchingEngine = () => {
   const { 
-    input, setInput, loading, result, error, handleMatch, selectExpert, resetMatching 
+    input, setInput, loading, result, error, handleMatch, selectExpert, resetMatching
   } = useMatching();
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
@@ -121,8 +144,6 @@ export const MatchingEngine = () => {
   });
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     sessionStorage.setItem('match_engine_chat', JSON.stringify(chatMessages));
@@ -144,7 +165,7 @@ export const MatchingEngine = () => {
     try {
       const chatPrompt = newMessages.map((m: any) => `${m.role}: ${m.content}`).join('\n');
       const response = await generateContent({
-        model: "gemini-flash-latest",
+        model: "gemini-2.5-flash",
         contents: `
           You are the SWYN Match Expert Synthesis Assistant. Help the user define their requirements for searching a fractional expert pool.
           Recent Conversation: ${chatPrompt}
@@ -172,26 +193,6 @@ export const MatchingEngine = () => {
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
-      setFile(selectedFile);
-      // If it's a small text file, we can actually read it
-      if (selectedFile.type === 'text/plain' || selectedFile.name.endsWith('.csv')) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const text = event.target?.result;
-          if (typeof text === 'string') {
-            setInput(text.slice(0, 2000)); // Limit to 2k chars
-          }
-        };
-        reader.readAsText(selectedFile);
-      } else {
-        setInput(`Requirement analysis requested for document: ${selectedFile.name}`);
-      }
-    }
-  };
-
   return (
     <div className="flex h-full overflow-hidden bg-slate-50">
       {/* Configuration Sidebar */}
@@ -203,7 +204,7 @@ export const MatchingEngine = () => {
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Input Client Constraints // Operational Analysis</p>
             </div>
             <button 
-              onClick={() => { setInput(''); resetMatching(); setFile(null); }}
+              onClick={() => { setInput(''); resetMatching(); }}
               className="p-2 hover:bg-slate-50 rounded-lg text-slate-400"
             >
               <X className="w-4 h-4" />
@@ -218,24 +219,7 @@ export const MatchingEngine = () => {
                 placeholder="Ex: I need a fractional CTO for an AI startup..."
                 className="w-full min-h-[160px] p-5 bg-slate-50 border border-slate-200 rounded-2xl text-sm leading-relaxed text-slate-600 focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all resize-none shadow-inner"
               />
-              <div className="absolute bottom-4 right-4 flex items-center gap-2">
-                 <button 
-                   onClick={() => fileInputRef.current?.click()}
-                   className="p-2 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-primary shadow-sm hover:shadow transition-all"
-                 >
-                   <Upload className="w-4 h-4" />
-                 </button>
-                 <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
-              </div>
             </div>
-
-            {file && (
-              <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-xl border border-primary/10 animate-in fade-in slide-in-from-top-1">
-                <FileText className="w-4 h-4 text-primary" />
-                <span className="text-xs font-bold text-slate-600 truncate flex-1">{file.name}</span>
-                <button onClick={() => setFile(null)} className="text-slate-400 hover:text-red-500"><X className="w-3 h-3" /></button>
-              </div>
-            )}
 
             <button
               onClick={() => handleMatch()}
