@@ -53,19 +53,19 @@ async function startServer() {
     next();
   });
 
-  // --- API Routes ---
+  // Determine production mode
+  const isProduction = process.env.NODE_ENV === "production";
+  const distPath = path.join(process.cwd(), "dist");
+  const distHtmlPath = path.join(distPath, "index.html");
   
-  app.get("/api/health", (req, res) => {
-    res.json({ 
-      status: "ok", 
-      time: new Date().toISOString(),
-      env: {
-        node_env: process.env.NODE_ENV,
-        gemini: !!process.env.GEMINI_API_KEY,
-        firebase: !!process.env.VITE_FIREBASE_PROJECT_ID
-      }
-    });
-  });
+  if (isProduction) {
+    console.info("Server running in PRODUCTION mode");
+    if (!fs.existsSync(distHtmlPath)) {
+      console.warn("CRITICAL WARNING: dist/index.html not found in production mode!");
+    }
+  } else {
+    console.info("Server running in DEVELOPMENT mode");
+  }
 
   /**
    * Universal Gemini Proxy
@@ -105,11 +105,25 @@ async function startServer() {
     }
   };
 
-  // Register directly on app to avoid router mounting issues
-  app.post("/api/gemini/generateContent", handleGemini);
-  app.post("/api/gemini/generateContent/", handleGemini);
+  // --- API Routes ---
+  const apiRouter = express.Router();
 
-  app.get("/api/proxy-sheet", async (req, res) => {
+  apiRouter.get("/health", (req, res) => {
+    res.json({ 
+      status: "ok", 
+      time: new Date().toISOString(),
+      env: {
+        node_env: process.env.NODE_ENV,
+        gemini: !!process.env.GEMINI_API_KEY,
+        firebase: !!process.env.VITE_FIREBASE_PROJECT_ID
+      }
+    });
+  });
+
+  apiRouter.post("/gemini/generateContent", handleGemini);
+  apiRouter.post("/gemini/generateContent/", handleGemini);
+
+  apiRouter.get("/proxy-sheet", async (req, res) => {
     const sheetId = req.query.id as string;
     const gid = req.query.gid as string;
     if (!sheetId) return res.status(400).json({ error: "Missing sheet ID" });
@@ -136,24 +150,14 @@ async function startServer() {
     }
   });
 
-  // API 404 handler
+  // Mount API router
+  app.use("/api", apiRouter);
+
+  // API 404 handler (must come after router)
   app.use("/api/*", (req, res) => {
     console.warn(`API Not Found: ${req.method} ${req.url}`);
     res.status(404).json({ error: "Resource not found" });
   });
-
-  // Trigger production mode if we are running the 'start' script
-  const distHtmlPath = path.join(process.cwd(), "dist/index.html");
-  const isProduction = process.env.NODE_ENV === "production" && fs.existsSync(distHtmlPath);
-  
-  if (isProduction) {
-    console.info("Server started in PRODUCTION mode");
-  } else {
-    if (process.env.NODE_ENV === "production") {
-      console.warn("WARNING: NODE_ENV is set to production but dist/index.html is missing. Falling back to development mode if possible.");
-    }
-    console.info("Server started in DEVELOPMENT mode");
-  }
 
   // Vite middleware for development
   if (!isProduction) {
