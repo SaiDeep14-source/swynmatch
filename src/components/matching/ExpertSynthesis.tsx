@@ -67,18 +67,26 @@ export const ExpertSynthesis = () => {
   };
 
   return (
-    <div className="p-10 max-w-7xl mx-auto pb-24">
-      <div className="flex justify-between items-end mb-12">
+    <div className="p-4 md:p-10 max-w-7xl mx-auto pb-24">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
         <div>
-          <h1 className="text-5xl font-light text-slate-800 tracking-tight">Expert Synthesis</h1>
-          <p className="text-slate-400 mt-3 text-sm font-medium uppercase tracking-widest italic">Temporal Neural Memory // Match History</p>
+          <h1 className="text-4xl md:text-5xl font-light text-slate-800 tracking-tight">Match History</h1>
+          <p className="text-slate-400 mt-3 text-sm font-medium uppercase tracking-widest italic">Temporal Neural Memory // Synthesis Vectors</p>
         </div>
-        <button 
-          onClick={() => navigate('/match')}
-          className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-slate-200 hover:bg-primary transition-all flex items-center gap-3"
-        >
-          New Synthesis Protocol <Zap className="w-4 h-4" />
-        </button>
+        <div className="flex gap-4 w-full md:w-auto">
+          <button 
+            onClick={() => navigate('/')}
+            className="flex-1 md:flex-none px-6 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-bold text-[10px] uppercase tracking-[0.2em] shadow-sm hover:bg-slate-50 transition-all"
+          >
+            Dashboard
+          </button>
+          <button 
+            onClick={() => navigate('/match')}
+            className="flex-[2] md:flex-none px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold text-[10px] uppercase tracking-[0.2em] shadow-xl shadow-slate-200 hover:bg-primary transition-all flex items-center justify-center gap-3"
+          >
+            New Match <Zap className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {loading ? (

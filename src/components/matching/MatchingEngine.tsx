@@ -20,9 +20,12 @@ import {
   Bot,
   User as UserIcon,
   X,
-  FileText
+  FileText,
+  History,
+  ArrowLeft
 } from 'lucide-react';
 import { Expert, MatchResponse, ChatMessage, MatchAnalysis } from '../../types';
+import { useNavigate } from 'react-router-dom';
 
 // Use proxy endpoint instead of exposing API key directly on client
 const generateContent = async (reqBody: any) => {
@@ -134,6 +137,7 @@ const MatchCard = ({ expert, index, onSelect, isSelected }: MatchCardProps) => (
 import { useMatching } from '../../contexts/MatchingContext';
 
 export const MatchingEngine = () => {
+  const navigate = useNavigate();
   const { 
     input, setInput, loading, result, error, handleMatch, selectExpert, resetMatching
   } = useMatching();
@@ -194,21 +198,30 @@ export const MatchingEngine = () => {
   };
 
   return (
-    <div className="flex h-full overflow-hidden bg-slate-50">
+    <div className="flex flex-col lg:flex-row h-full overflow-hidden bg-slate-50">
       {/* Configuration Sidebar */}
-      <aside className="w-[450px] bg-white border-r border-slate-200 flex flex-col p-8 gap-8 overflow-y-auto">
+      <aside className="lg:w-[450px] w-full bg-white border-r border-slate-200 flex flex-col p-4 md:p-8 gap-8 overflow-y-auto max-h-[40vh] lg:max-h-full">
         <section>
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-2xl font-light text-slate-800 tracking-tight">Requirement Logic</h2>
+              <h2 className="text-xl md:text-2xl font-light text-slate-800 tracking-tight">Requirement Logic</h2>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Input Client Constraints // Operational Analysis</p>
             </div>
-            <button 
-              onClick={() => { setInput(''); resetMatching(); }}
-              className="p-2 hover:bg-slate-50 rounded-lg text-slate-400"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button 
+                title="View History"
+                onClick={() => navigate('/chat')}
+                className="p-2 hover:bg-slate-50 rounded-lg text-slate-400"
+              >
+                <History className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => { setInput(''); resetMatching(); }}
+                className="p-2 hover:bg-slate-50 rounded-lg text-slate-400"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           
           <div className="space-y-4">
@@ -334,7 +347,7 @@ export const MatchingEngine = () => {
       </aside>
 
       {/* Results Main Area */}
-      <section className="flex-1 p-12 overflow-y-auto bg-[radial-gradient(#f1f5f9_1px,transparent_1px)] [background-size:24px_24px]">
+      <section className="flex-1 p-6 md:p-12 overflow-y-auto bg-[radial-gradient(#f1f5f9_1px,transparent_1px)] [background-size:24px_24px]">
         <AnimatePresence mode="wait">
           {!result && !loading && !error && (
             <motion.div
@@ -344,12 +357,12 @@ export const MatchingEngine = () => {
               exit={{ opacity: 0, scale: 0.95 }}
               className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto"
             >
-              <div className="w-24 h-24 bg-white shadow-2xl shadow-slate-200 rounded-[2.5rem] flex items-center justify-center mb-10 rotate-6 border border-slate-50 relative">
+              <div className="w-16 h-16 md:w-24 md:h-24 bg-white shadow-2xl shadow-slate-200 rounded-[2rem] md:rounded-[2.5rem] flex items-center justify-center mb-10 rotate-6 border border-slate-50 relative">
                 <div className="absolute inset-0 bg-primary/5 blur-xl rounded-full scale-150 animate-pulse"></div>
-                <Search className="w-10 h-10 text-slate-200 -rotate-6 relative z-10" />
+                <Search className="w-6 h-6 md:w-10 md:h-10 text-slate-200 -rotate-6 relative z-10" />
               </div>
-              <h2 className="text-3xl font-light text-slate-800 mb-4 tracking-tight">Expert Synthesis</h2>
-              <p className="text-slate-500 leading-relaxed text-sm font-medium">Input your business constraints to initiate the semantic reranking engine.</p>
+              <h2 className="text-2xl md:text-3xl font-light text-slate-800 mb-4 tracking-tight">Expert Synthesis</h2>
+              <p className="text-slate-500 leading-relaxed text-xs md:text-sm font-medium">Input your business constraints to initiate the semantic reranking engine.</p>
             </motion.div>
           )}
 
@@ -361,12 +374,12 @@ export const MatchingEngine = () => {
               className="space-y-8"
             >
               {[1, 2, 3].map(i => (
-                <div key={i} className="h-64 bg-white rounded-3xl border border-slate-100 animate-pulse shadow-sm flex flex-col p-8 gap-4">
+                <div key={i} className="h-48 md:h-64 bg-white rounded-3xl border border-slate-100 animate-pulse shadow-sm flex flex-col p-6 md:p-8 gap-4">
                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-slate-50 rounded-full" />
-                      <div className="w-32 h-4 bg-slate-50 rounded" />
+                      <div className="w-10 h-10 md:w-12 md:h-12 bg-slate-50 rounded-full" />
+                      <div className="w-24 md:w-32 h-4 bg-slate-50 rounded" />
                    </div>
-                   <div className="w-full h-24 bg-slate-50 rounded-xl" />
+                   <div className="w-full h-16 md:h-24 bg-slate-50 rounded-xl" />
                 </div>
               ))}
             </motion.div>
@@ -377,16 +390,22 @@ export const MatchingEngine = () => {
               key="results"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="space-y-12"
+              className="space-y-8 md:space-y-12"
             >
-          <div className="flex justify-between items-end">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                 <div>
-                  <h2 className="text-4xl font-light text-slate-800 tracking-tight">Match Vectors</h2>
+                  <h2 className="text-3xl md:text-4xl font-light text-slate-800 tracking-tight">Match Vectors</h2>
                   <p className="text-slate-400 mt-2 font-bold tracking-[0.15em] text-[10px] uppercase">Discovered {result.matches.length} candidates meeting internal threshold</p>
                 </div>
-                <div className="flex gap-4">
-                  <button className="px-6 py-4 bg-white border border-slate-200 rounded-2xl text-[10px] font-bold uppercase tracking-widest shadow-sm hover:ring-4 hover:ring-slate-50 transition-all">
-                    Export Selection
+                <div className="flex gap-2 md:gap-4 w-full md:w-auto">
+                   <button 
+                    onClick={() => navigate('/chat')}
+                    className="flex-1 md:flex-none px-4 md:px-6 py-4 bg-white border border-slate-200 rounded-2xl text-[10px] font-bold uppercase tracking-widest shadow-sm hover:ring-4 hover:ring-slate-50 transition-all flex items-center justify-center gap-2"
+                  >
+                    <ArrowLeft className="w-3 h-3" /> History
+                  </button>
+                  <button className="flex-1 md:flex-none px-4 md:px-6 py-4 bg-white border border-slate-200 rounded-2xl text-[10px] font-bold uppercase tracking-widest shadow-sm hover:ring-4 hover:ring-slate-50 transition-all">
+                    Export
                   </button>
                 </div>
               </div>

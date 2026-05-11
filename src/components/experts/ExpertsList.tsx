@@ -664,7 +664,7 @@ export const ExpertsList = () => {
       {/* Config Backdrop */}
       {showConfig && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl p-10 border border-slate-200">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl p-10 border border-slate-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex justify-between items-start mb-8">
               <div>
                 <h2 className="text-2xl font-light text-slate-800 tracking-tight">Sheet Intelligence</h2>
@@ -1064,12 +1064,12 @@ export const ExpertsList = () => {
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
           <div>
-            <h1 className="text-4xl font-light text-slate-800 tracking-tight flex items-center gap-4">
+            <h1 className="text-3xl md:text-4xl font-light text-slate-800 tracking-tight flex flex-wrap items-center gap-4">
               Expert Pool
-              <span className="text-xl text-slate-300 font-mono">({experts.length})</span>
+              <span className="text-lg md:text-xl text-slate-300 font-mono">({experts.length})</span>
             {isEffectiveAdmin && (
                 <span className="px-3 py-1 bg-primary text-white text-[8px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg shadow-primary/20">
-                  Admin Terminal Active
+                  Admin Active
                 </span>
               )}
             </h1>
@@ -1077,53 +1077,50 @@ export const ExpertsList = () => {
             Internal Master Pool {lastSynced ? `// Refreshed ${lastSynced}` : '// Synced with Google Sheets'}
           </p>
         </div>
-        <div className="flex gap-4 w-full md:w-auto">
-          <div className="relative flex-1 md:w-96">
+        <div className="flex flex-wrap gap-4 w-full md:w-auto">
+          <div className="relative flex-1 min-w-[280px] md:w-96">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Deep Search: Search names, areas, or any sheet detail..."
+              placeholder="Search experts..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-12 pr-6 py-4 bg-white border border-slate-200 rounded-2xl text-sm focus:ring-4 focus:ring-primary/10 outline-none transition-all shadow-sm"
             />
-            {searchTerm && (
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 px-2 py-1 bg-primary/10 text-primary text-[8px] font-black rounded uppercase tracking-widest animate-pulse">
-                Neural Filter Active
-              </div>
-            )}
           </div>
 
-          {isEffectiveAdmin && (
-            <button 
-              onClick={handleClearPool}
-              disabled={!!syncing}
-              className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-600 px-6 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all shadow-sm group"
-              title="Delete All Entries"
-            >
-              <Trash2 className="w-4 h-4 transition-transform group-hover:scale-110" />
-              <span className="hidden sm:inline">Delete All</span>
-            </button>
-          )}
+          <div className="flex gap-2 w-full md:w-auto">
+            {isEffectiveAdmin && (
+              <button 
+                onClick={handleClearPool}
+                disabled={!!syncing}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-red-50 border border-red-100 text-red-600 px-4 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all shadow-sm group"
+                title="Delete All Entries"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Clear All</span>
+              </button>
+            )}
 
-          {isEffectiveAdmin && (
-            <button 
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-6 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:border-primary hover:text-primary transition-all shadow-sm"
-            >
-              Add Expert <Plus className="w-4 h-4" />
-            </button>
-          )}
+            {isEffectiveAdmin && (
+              <button 
+                onClick={() => setShowAddModal(true)}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:border-primary hover:text-primary transition-all shadow-sm"
+              >
+                Add <Plus className="w-4 h-4" />
+              </button>
+            )}
 
-          {isEffectiveAdmin && (
-            <button 
-              onClick={() => setShowConfig(true)}
-              className="p-4 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-primary transition-all shadow-sm group"
-              title="Admin Settings & Sync"
-            >
-              <Settings className="w-5 h-5 group-hover:rotate-45 transition-transform" />
-            </button>
-          )}
+            {isEffectiveAdmin && (
+              <button 
+                onClick={() => setShowConfig(true)}
+                className="p-4 bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-primary transition-all shadow-sm group"
+                title="Admin Settings & Sync"
+              >
+                <Settings className="w-5 h-5 group-hover:rotate-45 transition-transform" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
