@@ -2,22 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { collection, addDoc, doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 import { Expert } from '../types';
-
-// Use proxy endpoint instead of exposing API key directly on client
-const generateContent = async (reqBody: any) => {
-  const res = await fetch("/api/gemini/generateContent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(reqBody)
-  });
-
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || "AI Request failed");
-  }
-
-  return await res.json();
-};
+import { generateGeminiContent as generateContent } from '../lib/gemini';
 
 interface MatchAnalysis {
   expertiseNeeded: string;

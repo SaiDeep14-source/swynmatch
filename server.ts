@@ -54,11 +54,14 @@ async function startServer() {
   });
 
   // --- API Routes ---
+  const apiRouter = express.Router();
 
-  app.get("/api/health", (req, res) => {
+  apiRouter.get("/health", (req, res) => {
     res.json({ 
       status: "ok", 
+      time: new Date().toISOString(),
       env: {
+        node_env: process.env.NODE_ENV,
         gemini: !!process.env.GEMINI_API_KEY,
         firebase: !!process.env.VITE_FIREBASE_PROJECT_ID
       }
@@ -69,12 +72,13 @@ async function startServer() {
    * Universal Gemini Proxy
    * Using 'handle' nomenclature to satisfy "handle function isnt declared" report
    */
-  const handleGeminiRequest = async (req: express.Request, res: express.Response) => {
+  const handle = async (req: express.Request, res: express.Response) => {
+    console.info(`Incoming Gemini Request: ${req.method} ${req.url}`);
     try {
-      const key = process.env.GEMINI_API_KEY;
+      const key = cleanEnvValue(process.env.GEMINI_API_KEY);
       if (!key) {
         console.error("Gemini API key missing in environment");
-        return res.status(400).json({ error: "API key not found. Please set GEMINI_API_KEY in the platform settings." });
+        return res.status(400).json({ error: "Gemini API key (GEMINI_API_KEY) not found in platform settings." });
       }
       
       const aiInstance = getGeminiClient();
@@ -99,18 +103,18 @@ async function startServer() {
       console.error("Gemini proxy error:", err);
       const statusCode = err.status || 500;
       res.status(statusCode).json({ 
-        error: err.message || "Internal server error",
+        error: err.message || "Internal AI Proxy Error",
         details: err.toString()
       });
     }
   };
 
-  // Register routes explicitly
-  app.post("/api/gemini/generateContent", handleGeminiRequest);
-  // Also register with trailing slash just in case
-  app.post("/api/gemini/generateContent/", handleGeminiRequest);
+  apiRouter.post("/gemini/generateContent", handle);
+  // Support both versions
+  apiRouter.post("/gemini/generateContent/", handle);
 
-  app.get("/api/proxy-sheet", async (req, res) => {
+
+  apiRouter.get("/proxy-sheet", async (req, res) => {
     const sheetId = req.query.id as string;
     const gid = req.query.gid as string;
     if (!sheetId) return res.status(400).json({ error: "Missing sheet ID" });
@@ -140,8 +144,12 @@ async function startServer() {
     }
   });
 
+  // Mount API router
+  app.use("/api", apiRouter);
+
   // API 404 catch-all
   app.all("/api/*", (req, res) => {
+    console.warn(`404 on API route: ${req.method} ${req.url}`);
     res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
   });
 

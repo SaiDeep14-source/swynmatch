@@ -25,21 +25,8 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { Expert, MatchResponse, ChatMessage, MatchAnalysis } from '../../types';
+import { generateGeminiContent as generateContent } from '../../lib/gemini';
 import { useNavigate } from 'react-router-dom';
-
-// Use proxy endpoint instead of exposing API key directly on client
-const generateContent = async (reqBody: any) => {
-  const res = await fetch("/api/gemini/generateContent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(reqBody)
-  });
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || "AI Request failed");
-  }
-  return await res.json();
-};
 
 interface MatchCardProps {
   expert: Expert;
