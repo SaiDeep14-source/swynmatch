@@ -54,9 +54,8 @@ async function startServer() {
   });
 
   // --- API Routes ---
-  const apiRouter = express.Router();
-
-  apiRouter.get("/health", (req, res) => {
+  
+  app.get("/api/health", (req, res) => {
     res.json({ 
       status: "ok", 
       time: new Date().toISOString(),
@@ -70,37 +69,34 @@ async function startServer() {
 
   /**
    * Universal Gemini Proxy
-   * Using 'handle' nomenclature to satisfy "handle function isnt declared" report
    */
-  const handle = async (req: express.Request, res: express.Response) => {
-    console.info(`Incoming Gemini Request: ${req.method} ${req.url}`);
+  const handleGemini = async (req: express.Request, res: express.Response) => {
+    console.info(`Gemini Proxy Triggered: ${req.method} ${req.url}`);
     try {
       const key = cleanEnvValue(process.env.GEMINI_API_KEY);
       if (!key) {
         console.error("Gemini API key missing in environment");
-        return res.status(400).json({ error: "Gemini API key (GEMINI_API_KEY) not found in platform settings." });
+        return res.status(400).json({ error: "Gemini API key not found in platform settings." });
       }
       
       const aiInstance = getGeminiClient();
       const payload = { ...req.body };
       
-      // Default to a safe model if none provided
-      if (!payload.model || payload.model === "gemini-2.5-flash") {
+      // Default model handling
+      if (!payload.model || payload.model.includes("gemini-1.5") || payload.model === "gemini-2.5-flash") {
         payload.model = "gemini-3-flash-preview";
       }
 
-      console.info(`Proxying Gemini request for model: ${payload.model}`);
+      console.info(`Calling Gemini: ${payload.model}`);
       const response = await aiInstance.models.generateContent(payload);
       
-      // EXPLICIT Extraction: Getters like .text are NOT serialized by res.json()
-      // We must explicitly extract them to ensure the client receives the data.
       res.json({
         text: response.text,
         usageMetadata: response.usageMetadata,
-        candidates: response.candidates // Full raw response if needed
+        candidates: response.candidates
       });
     } catch (err: any) {
-      console.error("Gemini proxy error:", err);
+      console.error("Gemini proxy logic error:", err);
       const statusCode = err.status || 500;
       res.status(statusCode).json({ 
         error: err.message || "Internal AI Proxy Error",
@@ -109,48 +105,41 @@ async function startServer() {
     }
   };
 
-  apiRouter.post("/gemini/generateContent", handle);
-  // Support both versions
-  apiRouter.post("/gemini/generateContent/", handle);
+  // Register directly on app to avoid router mounting issues
+  app.post("/api/gemini/generateContent", handleGemini);
+  app.post("/api/gemini/generateContent/", handleGemini);
 
-
-  apiRouter.get("/proxy-sheet", async (req, res) => {
+  app.get("/api/proxy-sheet", async (req, res) => {
     const sheetId = req.query.id as string;
     const gid = req.query.gid as string;
     if (!sheetId) return res.status(400).json({ error: "Missing sheet ID" });
 
     try {
       const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
-      console.info(`Proxying request to: ${url}`);
+      console.info(`Proxying Sheet: ${url}`);
       
       const response = await fetch(url);
-      const contentType = response.headers.get("content-type");
-      
       if (!response.ok) {
-        return res.status(response.status).json({ error: `Google Sheets API returned ${response.status} for ${sheetId}.` });
+        return res.status(response.status).json({ error: `Google Sheets returned ${response.status}` });
       }
       
+      const contentType = response.headers.get("content-type");
       if (contentType && contentType.includes("text/html")) {
-        return res.status(401).json({ 
-          error: "Permission denied. The Google Sheet must be shared as 'Anyone with the link can view'." 
-        });
+        return res.status(401).json({ error: "Sheet not public (Anyone with link can view required)" });
       }
 
       const csvText = await response.text();
       res.send(csvText);
     } catch (err: any) {
-      console.error('Proxy Error:', err);
-      res.status(500).json({ error: "Network error fetching spreadsheet: " + err.message });
+      console.error('Sheet Proxy Error:', err);
+      res.status(500).json({ error: "Network error fetching sheet: " + err.message });
     }
   });
 
-  // Mount API router
-  app.use("/api", apiRouter);
-
-  // API 404 catch-all
-  app.all("/api/*", (req, res) => {
-    console.warn(`404 on API route: ${req.method} ${req.url}`);
-    res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
+  // API 404 handler
+  app.use("/api/*", (req, res) => {
+    console.warn(`API Not Found: ${req.method} ${req.url}`);
+    res.status(404).json({ error: "Resource not found" });
   });
 
   // Vite middleware for development
