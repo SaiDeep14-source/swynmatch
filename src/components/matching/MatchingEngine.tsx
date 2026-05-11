@@ -27,18 +27,19 @@ import {
 import { Expert, MatchResponse, ChatMessage, MatchAnalysis } from '../../types';
 import { useNavigate } from 'react-router-dom';
 
-// Use proxy endpoint instead of exposing API key directly on client
+import { GoogleGenAI } from "@google/genai";
+
+// Standard Firebase initialization from skill
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
 const generateContent = async (reqBody: any) => {
-  const res = await fetch("/api/gemini/generateContent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(reqBody)
-  });
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || "AI Request failed");
+  try {
+    const response = await ai.models.generateContent(reqBody);
+    return response;
+  } catch (err: any) {
+    console.error("Gemini API Error (Engine):", err);
+    throw err;
   }
-  return await res.json();
 };
 
 interface MatchCardProps {
@@ -169,7 +170,7 @@ export const MatchingEngine = () => {
     try {
       const chatPrompt = newMessages.map((m: any) => `${m.role}: ${m.content}`).join('\n');
       const response = await generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3-flash-preview",
         contents: `
           You are the SWYN Match Expert Synthesis Assistant. Help the user define their requirements for searching a fractional expert pool.
           Recent Conversation: ${chatPrompt}
@@ -349,6 +350,26 @@ export const MatchingEngine = () => {
       {/* Results Main Area */}
       <section className="flex-1 p-6 md:p-12 overflow-y-auto bg-[radial-gradient(#f1f5f9_1px,transparent_1px)] [background-size:24px_24px]">
         <AnimatePresence mode="wait">
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-6 bg-red-50 border border-red-100 rounded-3xl mb-8 flex items-start gap-4"
+            >
+              <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-1" />
+              <div>
+                <h3 className="text-sm font-bold text-red-800 uppercase tracking-widest mb-1">Synthesis Halted</h3>
+                <p className="text-xs text-red-600 leading-relaxed font-medium">{error}</p>
+                <button 
+                  onClick={() => handleMatch()}
+                  className="mt-3 text-[10px] font-black text-red-700 uppercase tracking-widest hover:underline"
+                >
+                  Retry Protocol
+                </button>
+              </div>
+            </motion.div>
+          )}
+
           {!result && !loading && !error && (
             <motion.div
               key="empty"

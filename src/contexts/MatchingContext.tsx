@@ -3,35 +3,19 @@ import { collection, addDoc, doc, updateDoc, onSnapshot } from 'firebase/firesto
 import { db, auth } from '../lib/firebase';
 import { Expert } from '../types';
 
-// Use proxy endpoint instead of exposing API key directly on client
+import { GoogleGenAI } from "@google/genai";
+
+// Standard Firebase initialization from skill
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
 const generateContent = async (reqBody: any) => {
-  const res = await fetch("/api/gemini/generateContent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(reqBody)
-  });
-
-  const contentType = res.headers.get("content-type");
-  if (!res.ok) {
-    let errorMessage = "AI Request failed";
-    if (contentType && contentType.includes("application/json")) {
-      const errData = await res.json().catch(() => ({}));
-      errorMessage = errData.error || errorMessage;
-    } else {
-      const text = await res.text().catch(() => "");
-      console.error("Non-JSON error response from Gemini proxy:", text.substring(0, 200));
-      errorMessage = `Server Error (${res.status}): ${text.substring(0, 100)}...`;
-    }
-    throw new Error(errorMessage);
+  try {
+    const response = await ai.models.generateContent(reqBody);
+    return response;
+  } catch (err: any) {
+    console.error("Gemini API Error:", err);
+    throw err;
   }
-
-  if (!contentType || !contentType.includes("application/json")) {
-    const text = await res.text().catch(() => "");
-    console.error("Expected JSON but received non-JSON response:", text.substring(0, 200));
-    throw new Error("Invalid response format from server. Expected JSON.");
-  }
-
-  return await res.json();
 };
 
 interface MatchAnalysis {

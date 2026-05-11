@@ -1,20 +1,10 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
-import { GoogleGenAI } from "@google/genai";
 
 dotenv.config({ override: true });
-
-// Ensure AI proxy uses server-side key
-let ai: GoogleGenAI | null = null;
-const getAi = () => {
-  if (!ai) {
-    if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not defined");
-    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  }
-  return ai;
-};
 
 async function startServer() {
   const app = express();
@@ -33,49 +23,8 @@ async function startServer() {
 
   // --- API Routes ---
 
-  app.get("/api/env", (req, res) => {
-    res.json({ 
-      keys: Object.keys(process.env).filter(k => k.includes("GEM") || k.includes("API") || k.includes("KEY") || k.includes("GOOGLE") || k.includes("AI")),
-      nextPubKeyPrefix: process.env.NEXT_PUBLIC_GEMINI_API_KEY ? process.env.NEXT_PUBLIC_GEMINI_API_KEY.substring(0, 4) : 'NONE',
-      geminiKeyPrefix: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.substring(0, 4) : 'NONE'
-    });
-  });
-
   app.get("/api/health", (req, res) => {
-    const key = process.env.GEMINI_API_KEY;
-    const keyPrefix = key ? key.substring(0, 4) : "NONE";
-    const keyLength = key ? key.length : 0;
-    res.json({ status: "ok", keyPrefix, keyLength });
-  });
-
-  app.post("/api/gemini/generateContent", async (req, res) => {
-    try {
-      if (!process.env.GEMINI_API_KEY) {
-        return res.status(400).json({ error: "API key not found. Please set GEMINI_API_KEY in your environment variables." });
-      }
-      
-      console.info(`Requesting Gemini analysis for model: ${req.body.model}`);
-      const aiInstance = getAi();
-      
-      // Ensure we use a valid model if the client sends a questionable one
-      const payload = { ...req.body };
-      if (!payload.model || payload.model.includes('2.5')) {
-        payload.model = "gemini-3-flash-preview";
-      }
-
-      const response = await aiInstance.models.generateContent(payload);
-      
-      if (!response || !response.text) {
-        console.error("Gemini returned empty response:", response);
-        throw new Error("Empty response from AI");
-      }
-
-      res.json({ text: response.text, usageMetadata: response.usageMetadata });
-    } catch (err: any) {
-      console.error("Gemini proxy error:", err);
-      const statusCode = err.status || (err.message && err.message.includes("API key not valid") ? 401 : 500);
-      res.status(statusCode).json({ error: err.message || "Internal server error" });
-    }
+    res.json({ status: "ok" });
   });
 
   app.get("/api/proxy-sheet", async (req, res) => {
@@ -120,6 +69,19 @@ async function startServer() {
       appType: "spa",
     });
     app.use(vite.middlewares);
+    
+    // Ensure SPA fallback works in dev if vite middleware falls through
+    app.use('*', async (req, res, next) => {
+      if (req.originalUrl.startsWith('/api/')) return next();
+      try {
+        const indexPath = path.resolve(process.cwd(), "index.html");
+        let template = fs.readFileSync(indexPath, "utf-8");
+        template = await vite.transformIndexHtml(req.originalUrl, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        next(e);
+      }
+    });
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
