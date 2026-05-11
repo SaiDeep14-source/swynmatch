@@ -7,23 +7,27 @@ import { GoogleGenAI } from "@google/genai";
 
 dotenv.config({ override: true });
 
+const cleanEnvValue = (val: string | undefined) => {
+  if (!val) return "";
+  return val.trim().replace(/^["'](.*)["']$/, '$1').trim();
+};
+
 // Debug env loading
 console.info("Environment Check:");
-console.info("- GEMINI_API_KEY:", process.env.GEMINI_API_KEY ? "PRESENT" : "MISSING");
+const rawKey = process.env.GEMINI_API_KEY;
+console.info("- GEMINI_API_KEY:", rawKey ? `PRESENT (starts with ${rawKey.substring(0, 4)}...)` : "MISSING");
 console.info("- FIREBASE_PROJECT_ID:", process.env.VITE_FIREBASE_PROJECT_ID ? "PRESENT" : "MISSING");
 
 // Ensure AI proxy uses server-side key
 let ai: GoogleGenAI | null = null;
 const getGeminiClient = () => {
   if (!ai) {
-    const key = process.env.GEMINI_API_KEY;
+    const key = cleanEnvValue(process.env.GEMINI_API_KEY);
     if (!key) {
       console.error("FATAL: GEMINI_API_KEY is not defined in environment.");
-      throw new Error("GEMINI_API_KEY is not defined");
+      throw new Error("GEMINI_API_KEY is not defined. Please set it in platform settings.");
     }
-    // Clean key of any potential quotes or spaces
-    const cleanKey = key.trim().replace(/^["'](.+)["']$/, '$1');
-    ai = new GoogleGenAI({ apiKey: cleanKey });
+    ai = new GoogleGenAI({ apiKey: key });
   }
   return ai;
 };
@@ -31,6 +35,12 @@ const getGeminiClient = () => {
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Basic request logger
+  app.use((req, res, next) => {
+    console.info(`${req.method} ${req.url}`);
+    next();
+  });
 
   app.use(express.json({ limit: '50mb' }));
 
@@ -61,7 +71,9 @@ async function startServer() {
    */
   const handleGeminiRequest = async (req: express.Request, res: express.Response) => {
     try {
-      if (!process.env.GEMINI_API_KEY) {
+      const key = process.env.GEMINI_API_KEY;
+      if (!key) {
+        console.error("Gemini API key missing in environment");
         return res.status(400).json({ error: "API key not found. Please set GEMINI_API_KEY in the platform settings." });
       }
       
@@ -69,7 +81,7 @@ async function startServer() {
       const payload = { ...req.body };
       
       // Default to a safe model if none provided
-      if (!payload.model) {
+      if (!payload.model || payload.model === "gemini-2.5-flash") {
         payload.model = "gemini-3-flash-preview";
       }
 
@@ -86,11 +98,17 @@ async function startServer() {
     } catch (err: any) {
       console.error("Gemini proxy error:", err);
       const statusCode = err.status || 500;
-      res.status(statusCode).json({ error: err.message || "Internal server error" });
+      res.status(statusCode).json({ 
+        error: err.message || "Internal server error",
+        details: err.toString()
+      });
     }
   };
 
+  // Register routes explicitly
   app.post("/api/gemini/generateContent", handleGeminiRequest);
+  // Also register with trailing slash just in case
+  app.post("/api/gemini/generateContent/", handleGeminiRequest);
 
   app.get("/api/proxy-sheet", async (req, res) => {
     const sheetId = req.query.id as string;
