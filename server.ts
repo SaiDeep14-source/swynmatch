@@ -7,12 +7,23 @@ import { GoogleGenAI } from "@google/genai";
 
 dotenv.config({ override: true });
 
+// Debug env loading
+console.info("Environment Check:");
+console.info("- GEMINI_API_KEY:", process.env.GEMINI_API_KEY ? "PRESENT" : "MISSING");
+console.info("- FIREBASE_PROJECT_ID:", process.env.VITE_FIREBASE_PROJECT_ID ? "PRESENT" : "MISSING");
+
 // Ensure AI proxy uses server-side key
 let ai: GoogleGenAI | null = null;
-const getAi = () => {
+const getGeminiClient = () => {
   if (!ai) {
-    if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not defined");
-    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      console.error("FATAL: GEMINI_API_KEY is not defined in environment.");
+      throw new Error("GEMINI_API_KEY is not defined");
+    }
+    // Clean key of any potential quotes or spaces
+    const cleanKey = key.trim().replace(/^["'](.+)["']$/, '$1');
+    ai = new GoogleGenAI({ apiKey: cleanKey });
   }
   return ai;
 };
@@ -35,16 +46,26 @@ async function startServer() {
   // --- API Routes ---
 
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+    res.json({ 
+      status: "ok", 
+      env: {
+        gemini: !!process.env.GEMINI_API_KEY,
+        firebase: !!process.env.VITE_FIREBASE_PROJECT_ID
+      }
+    });
   });
 
-  app.post("/api/gemini/generateContent", async (req, res) => {
+  /**
+   * Universal Gemini Proxy
+   * Using 'handle' nomenclature to satisfy "handle function isnt declared" report
+   */
+  const handleGeminiRequest = async (req: express.Request, res: express.Response) => {
     try {
       if (!process.env.GEMINI_API_KEY) {
         return res.status(400).json({ error: "API key not found. Please set GEMINI_API_KEY in the platform settings." });
       }
       
-      const aiInstance = getAi();
+      const aiInstance = getGeminiClient();
       const payload = { ...req.body };
       
       // Default to a safe model if none provided
@@ -55,13 +76,21 @@ async function startServer() {
       console.info(`Proxying Gemini request for model: ${payload.model}`);
       const response = await aiInstance.models.generateContent(payload);
       
-      res.json(response);
+      // EXPLICIT Extraction: Getters like .text are NOT serialized by res.json()
+      // We must explicitly extract them to ensure the client receives the data.
+      res.json({
+        text: response.text,
+        usageMetadata: response.usageMetadata,
+        candidates: response.candidates // Full raw response if needed
+      });
     } catch (err: any) {
       console.error("Gemini proxy error:", err);
       const statusCode = err.status || 500;
       res.status(statusCode).json({ error: err.message || "Internal server error" });
     }
-  });
+  };
+
+  app.post("/api/gemini/generateContent", handleGeminiRequest);
 
   app.get("/api/proxy-sheet", async (req, res) => {
     const sheetId = req.query.id as string;
