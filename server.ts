@@ -142,8 +142,21 @@ async function startServer() {
     res.status(404).json({ error: "Resource not found" });
   });
 
+  // Trigger production mode if we are running the 'start' script
+  const distHtmlPath = path.join(process.cwd(), "dist/index.html");
+  const isProduction = process.env.NODE_ENV === "production" && fs.existsSync(distHtmlPath);
+  
+  if (isProduction) {
+    console.info("Server started in PRODUCTION mode");
+  } else {
+    if (process.env.NODE_ENV === "production") {
+      console.warn("WARNING: NODE_ENV is set to production but dist/index.html is missing. Falling back to development mode if possible.");
+    }
+    console.info("Server started in DEVELOPMENT mode");
+  }
+
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -164,9 +177,24 @@ async function startServer() {
     });
   } else {
     const distPath = path.join(process.cwd(), "dist");
+    console.info(`Serving static files from: ${distPath}`);
+    
     app.use(express.static(distPath));
+    
+    // Handle SPA fallback for client-side routing
     app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      // If it's a request for an API route that reached here, it's a 404
+      if (req.originalUrl.startsWith('/api/')) {
+        console.warn(`API Not Found (in prod catch-all): ${req.method} ${req.url}`);
+        return res.status(404).json({ error: "API route not found" });
+      }
+      
+      if (fs.existsSync(distHtmlPath)) {
+        res.sendFile(distHtmlPath);
+      } else {
+        console.error(`ERROR: dist/index.html not found even though in production mode! Path: ${distHtmlPath}`);
+        res.status(500).send("Production build missing. Please rebuild the application.");
+      }
     });
   }
 
