@@ -36,42 +36,22 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Basic request logger
-  app.use((req, res, next) => {
-    console.info(`${req.method} ${req.url}`);
-    next();
-  });
-
+  // --- Pre-route Middlewares ---
   app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-  // Global error handler for JSON parsing errors
-  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (err instanceof SyntaxError && 'body' in err) {
-      console.error("Malformed JSON detected:", err.message);
-      return res.status(400).json({ error: "Invalid JSON payload" });
-    }
+  // Basic request logger - Move to VERY top
+  app.use((req, res, next) => {
+    const timestamp = new Date().toISOString();
+    console.info(`[${timestamp}] ${req.method} ${req.originalUrl}`);
     next();
   });
-
-  // Determine production mode
-  const isProduction = process.env.NODE_ENV === "production";
-  const distPath = path.join(process.cwd(), "dist");
-  const distHtmlPath = path.join(distPath, "index.html");
-  
-  if (isProduction) {
-    console.info("Server running in PRODUCTION mode");
-    if (!fs.existsSync(distHtmlPath)) {
-      console.warn("CRITICAL WARNING: dist/index.html not found in production mode!");
-    }
-  } else {
-    console.info("Server running in DEVELOPMENT mode");
-  }
 
   /**
    * Universal Gemini Proxy
    */
   const handleGemini = async (req: express.Request, res: express.Response) => {
-    console.info(`Gemini Proxy Triggered: ${req.method} ${req.url}`);
+    console.info(`Gemini Proxy Triggered: ${req.method} ${req.originalUrl}`);
     try {
       const key = cleanEnvValue(process.env.GEMINI_API_KEY);
       if (!key) {
@@ -105,10 +85,9 @@ async function startServer() {
     }
   };
 
-  // --- API Routes ---
-  const apiRouter = express.Router();
-
-  apiRouter.get("/health", (req, res) => {
+  // --- API Routes (Registered BEFORE Static/Vite) ---
+  
+  app.get("/api/health", (req, res) => {
     res.json({ 
       status: "ok", 
       time: new Date().toISOString(),
@@ -120,10 +99,10 @@ async function startServer() {
     });
   });
 
-  apiRouter.post("/gemini/generateContent", handleGemini);
-  apiRouter.post("/gemini/generateContent/", handleGemini);
+  app.post("/api/gemini/generateContent", handleGemini);
+  app.post("/api/gemini/generateContent/", handleGemini);
 
-  apiRouter.get("/proxy-sheet", async (req, res) => {
+  app.get("/api/proxy-sheet", async (req, res) => {
     const sheetId = req.query.id as string;
     const gid = req.query.gid as string;
     if (!sheetId) return res.status(400).json({ error: "Missing sheet ID" });
@@ -150,14 +129,25 @@ async function startServer() {
     }
   });
 
-  // Mount API router
-  app.use("/api", apiRouter);
-
-  // API 404 handler (must come after router)
-  app.use("/api/*", (req, res) => {
-    console.warn(`API Not Found: ${req.method} ${req.url}`);
-    res.status(404).json({ error: "Resource not found" });
+  // API 404 handler - MUST be before Vite/Static fallback
+  app.all("/api/*", (req, res) => {
+    console.warn(`API Not Found: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({ 
+      error: "API endpoint not found",
+      details: `Route ${req.method} ${req.originalUrl} matches no handler.`
+    });
   });
+
+  // Determine production mode
+  const isProduction = process.env.NODE_ENV === "production";
+  const distPath = path.join(process.cwd(), "dist");
+  const distHtmlPath = path.join(distPath, "index.html");
+  
+  if (isProduction) {
+    console.info("Server running in PRODUCTION mode");
+  } else {
+    console.info("Server running in DEVELOPMENT mode");
+  }
 
   // Vite middleware for development
   if (!isProduction) {
@@ -187,17 +177,16 @@ async function startServer() {
     
     // Handle SPA fallback for client-side routing
     app.get("*", (req, res) => {
-      // If it's a request for an API route that reached here, it's a 404
+      // API routes should never reach here (handled above)
       if (req.originalUrl.startsWith('/api/')) {
-        console.warn(`API Not Found (in prod catch-all): ${req.method} ${req.url}`);
-        return res.status(404).json({ error: "API route not found" });
+        return res.status(404).json({ error: "API endpoint not found (fallback)" });
       }
       
       if (fs.existsSync(distHtmlPath)) {
         res.sendFile(distHtmlPath);
       } else {
-        console.error(`ERROR: dist/index.html not found even though in production mode! Path: ${distHtmlPath}`);
-        res.status(500).send("Production build missing. Please rebuild the application.");
+        console.error(`ERROR: dist/index.html not found! Path: ${distHtmlPath}`);
+        res.status(500).send("The application build appears to be missing. Please rebuild.");
       }
     });
   }
