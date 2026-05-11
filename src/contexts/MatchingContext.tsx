@@ -3,19 +3,20 @@ import { collection, addDoc, doc, updateDoc, onSnapshot } from 'firebase/firesto
 import { db, auth } from '../lib/firebase';
 import { Expert } from '../types';
 
-import { GoogleGenAI } from "@google/genai";
-
-// Standard Firebase initialization from skill
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
+// Use proxy endpoint instead of exposing API key directly on client
 const generateContent = async (reqBody: any) => {
-  try {
-    const response = await ai.models.generateContent(reqBody);
-    return response;
-  } catch (err: any) {
-    console.error("Gemini API Error:", err);
-    throw err;
+  const res = await fetch("/api/gemini/generateContent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reqBody)
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || "AI Request failed");
   }
+
+  return await res.json();
 };
 
 interface MatchAnalysis {

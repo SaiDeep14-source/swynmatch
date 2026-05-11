@@ -3,8 +3,19 @@ import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+import { GoogleGenAI } from "@google/genai";
 
 dotenv.config({ override: true });
+
+// Ensure AI proxy uses server-side key
+let ai: GoogleGenAI | null = null;
+const getAi = () => {
+  if (!ai) {
+    if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY is not defined");
+    ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
+  return ai;
+};
 
 async function startServer() {
   const app = express();
@@ -25,6 +36,31 @@ async function startServer() {
 
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.post("/api/gemini/generateContent", async (req, res) => {
+    try {
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(400).json({ error: "API key not found. Please set GEMINI_API_KEY in the platform settings." });
+      }
+      
+      const aiInstance = getAi();
+      const payload = { ...req.body };
+      
+      // Default to a safe model if none provided
+      if (!payload.model) {
+        payload.model = "gemini-3-flash-preview";
+      }
+
+      console.info(`Proxying Gemini request for model: ${payload.model}`);
+      const response = await aiInstance.models.generateContent(payload);
+      
+      res.json(response);
+    } catch (err: any) {
+      console.error("Gemini proxy error:", err);
+      const statusCode = err.status || 500;
+      res.status(statusCode).json({ error: err.message || "Internal server error" });
+    }
   });
 
   app.get("/api/proxy-sheet", async (req, res) => {
