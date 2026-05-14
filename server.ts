@@ -32,62 +32,53 @@ const getGeminiClient = () => {
   return ai;
 };
 
+/**
+ * Universal Gemini Proxy
+ */
+const handleGemini = async (req: express.Request, res: express.Response) => {
+  console.info(`Gemini Proxy Triggered: ${req.method} ${req.originalUrl}`);
+  try {
+    const key = cleanEnvValue(process.env.GEMINI_API_KEY);
+    if (!key) {
+      console.error("Gemini API key missing in environment");
+      return res.status(400).json({ error: "Gemini API key not found in platform settings." });
+    }
+    
+    const aiInstance = getGeminiClient();
+    const payload = { ...req.body };
+    
+    // Default model handling
+    if (!payload.model || payload.model.includes("gemini-1.5") || payload.model === "gemini-2.5-flash") {
+      payload.model = "gemini-3-flash-preview";
+    }
+
+    console.info(`Calling Gemini: ${payload.model}`);
+    const response = await aiInstance.models.generateContent(payload);
+    
+    res.json({
+      text: response.text,
+      usageMetadata: response.usageMetadata,
+      candidates: response.candidates
+    });
+  } catch (err: any) {
+    console.error("Gemini proxy logic error:", err);
+    const statusCode = err.status || 500;
+    res.status(statusCode).json({ 
+      error: err.message || "Internal AI Proxy Error",
+      details: err.toString()
+    });
+  }
+};
+
 // Initialize Express immediately
 const app = express();
 const PORT = 3000;
 
-async function startServer() {
-  // --- Pre-route Middlewares ---
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+  const isProduction = process.env.NODE_ENV === "production";
+  const distPath = path.join(process.cwd(), "dist");
+  const distHtmlPath = path.join(distPath, "index.html");
 
-  // Basic request logger - Move to VERY top
-  app.use((req, res, next) => {
-    const timestamp = new Date().toISOString();
-    console.info(`[${timestamp}] ${req.method} ${req.originalUrl}`);
-    next();
-  });
-
-  /**
-   * Universal Gemini Proxy
-   */
-  const handleGemini = async (req: express.Request, res: express.Response) => {
-    console.info(`Gemini Proxy Triggered: ${req.method} ${req.originalUrl}`);
-    try {
-      const key = cleanEnvValue(process.env.GEMINI_API_KEY);
-      if (!key) {
-        console.error("Gemini API key missing in environment");
-        return res.status(400).json({ error: "Gemini API key not found in platform settings." });
-      }
-      
-      const aiInstance = getGeminiClient();
-      const payload = { ...req.body };
-      
-      // Default model handling
-      if (!payload.model || payload.model.includes("gemini-1.5") || payload.model === "gemini-2.5-flash") {
-        payload.model = "gemini-3-flash-preview";
-      }
-
-      console.info(`Calling Gemini: ${payload.model}`);
-      const response = await aiInstance.models.generateContent(payload);
-      
-      res.json({
-        text: response.text,
-        usageMetadata: response.usageMetadata,
-        candidates: response.candidates
-      });
-    } catch (err: any) {
-      console.error("Gemini proxy logic error:", err);
-      const statusCode = err.status || 500;
-      res.status(statusCode).json({ 
-        error: err.message || "Internal AI Proxy Error",
-        details: err.toString()
-      });
-    }
-  };
-
-  // --- API Routes (Registered BEFORE Static/Vite) ---
-  
+  // --- API Routes (Defined synchronously at top level or early in startServer) ---
   app.get("/api/health", (req, res) => {
     res.json({ 
       status: "ok", 
@@ -130,6 +121,13 @@ async function startServer() {
     }
   });
 
+  // Basic request logger
+  app.use((req, res, next) => {
+    const timestamp = new Date().toISOString();
+    console.info(`[${timestamp}] ${req.method} ${req.originalUrl}`);
+    next();
+  });
+
   // API 404 handler - MUST be before Vite/Static fallback
   app.all("/api/*", (req, res) => {
     console.warn(`API Not Found: ${req.method} ${req.originalUrl}`);
@@ -139,16 +137,10 @@ async function startServer() {
     });
   });
 
-  // Determine production mode
-  const isProduction = process.env.NODE_ENV === "production";
-  const distPath = path.join(process.cwd(), "dist");
-  const distHtmlPath = path.join(distPath, "index.html");
-  
-  if (isProduction) {
-    console.info("Server running in PRODUCTION mode");
-  } else {
-    console.info("Server running in DEVELOPMENT mode");
-  }
+  async function startServer() {
+  // --- Pre-route Middlewares ---
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // Vite middleware for development
   if (!isProduction) {
