@@ -55,8 +55,8 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
     const aiInstance = getGeminiClient();
     const payload = { ...req.body };
     
-    if (!payload.model || payload.model.includes("gemini-1.5") || payload.model === "gemini-2.5-flash") {
-      payload.model = "gemini-3-flash-preview";
+    if (!payload.model || payload.model.includes("gemini-1.5") || payload.model.includes("flash")) {
+      payload.model = "gemini-3-pro-preview";
     }
 
     console.info(`Calling Gemini: ${payload.model}`);
