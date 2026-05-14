@@ -32,10 +32,11 @@ const getGeminiClient = () => {
   return ai;
 };
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+// Initialize Express immediately
+const app = express();
+const PORT = 3000;
 
+async function startServer() {
   // --- Pre-route Middlewares ---
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -191,9 +192,21 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  // Only listen if not in a serverless environment (e.g. Vercel)
+  if (!process.env.VERCEL && !process.env.NOW_REGION) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
+  
+  return app;
 }
 
-startServer();
+// Initialize the server logic
+startServer().catch(err => {
+  console.error("Failed to start server:", err);
+});
+
+// Export app for serverless environments like Vercel
+export default app;
+export { app };
