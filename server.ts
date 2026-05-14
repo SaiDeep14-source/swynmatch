@@ -76,12 +76,11 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
     });
   } catch (err: any) {
     console.error("Gemini proxy logic error:", err);
-    let statusCode = 500;
-    if (typeof err.status === 'number') {
+    let statusCode = 400; // ALWAYS use 400 to prevent proxy rewrite
+    if (typeof err.status === 'number' && err.status >= 400 && err.status < 500) {
       statusCode = err.status;
-    } else if (err.status === 'INVALID_ARGUMENT') {
-      statusCode = 400;
     }
+    
     res.status(statusCode).json({ 
       error: err.message || "Internal AI Proxy Error",
       details: err.toString()
