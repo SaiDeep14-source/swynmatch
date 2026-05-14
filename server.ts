@@ -12,12 +12,6 @@ const cleanEnvValue = (val: string | undefined) => {
   return val.trim().replace(/^["'](.*)["']$/, '$1').trim();
 };
 
-// Debug env loading
-console.info("Environment Check:");
-const rawKey = process.env.GEMINI_API_KEY;
-console.info("- GEMINI_API_KEY:", rawKey ? `PRESENT (starts with ${rawKey.substring(0, 4)}...)` : "MISSING");
-console.info("- FIREBASE_PROJECT_ID:", process.env.VITE_FIREBASE_PROJECT_ID ? "PRESENT" : "MISSING");
-
 // Ensure AI proxy uses server-side key
 let ai: GoogleGenAI | null = null;
 const getGeminiClient = () => {
@@ -31,6 +25,20 @@ const getGeminiClient = () => {
   }
   return ai;
 };
+
+const app = express();
+const PORT = 3000;
+
+// --- Pre-route Middlewares ---
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Basic request logger
+app.use((req, res, next) => {
+  const timestamp = new Date().toISOString();
+  console.info(`[${timestamp}] ${req.method} ${req.originalUrl}`);
+  next();
+});
 
 /**
  * Universal Gemini Proxy
@@ -47,7 +55,6 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
     const aiInstance = getGeminiClient();
     const payload = { ...req.body };
     
-    // Default model handling
     if (!payload.model || payload.model.includes("gemini-1.5") || payload.model === "gemini-2.5-flash") {
       payload.model = "gemini-3-flash-preview";
     }
@@ -62,87 +69,82 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
     });
   } catch (err: any) {
     console.error("Gemini proxy logic error:", err);
-    const statusCode = err.status || 500;
-    res.status(statusCode).json({ 
+    res.status(err.status || 500).json({ 
       error: err.message || "Internal AI Proxy Error",
       details: err.toString()
     });
   }
 };
 
-// Initialize Express immediately
-const app = express();
-const PORT = 3000;
+// --- API Routes ---
+const apiRouter = express.Router();
 
+apiRouter.get("/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    time: new Date().toISOString(),
+    env: {
+      node_env: process.env.NODE_ENV,
+      gemini: !!process.env.GEMINI_API_KEY,
+      firebase: !!process.env.VITE_FIREBASE_PROJECT_ID
+    }
+  });
+});
+
+apiRouter.post("/gemini/generateContent", handleGemini);
+apiRouter.post("/gemini/generateContent/", handleGemini);
+
+apiRouter.get("/proxy-sheet", async (req, res) => {
+  const sheetId = req.query.id as string;
+  const gid = req.query.gid as string;
+  if (!sheetId) return res.status(400).json({ error: "Missing sheet ID" });
+
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
+    console.info(`Proxying Sheet: ${url}`);
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `Google Sheets returned ${response.status}` });
+    }
+    
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("text/html")) {
+      return res.status(401).json({ error: "Sheet not public (Anyone with link can view required)" });
+    }
+
+    const csvText = await response.text();
+    res.send(csvText);
+  } catch (err: any) {
+    console.error('Sheet Proxy Error:', err);
+    res.status(500).json({ error: "Network error fetching sheet: " + err.message });
+  }
+});
+
+// Mount the router at both root and /api to be safe
+app.use("/api", apiRouter);
+app.use("/", (req, res, next) => {
+  // If it's a request intended for the API but path prefix was stripped (common in some rewrites)
+  if (req.url.startsWith('/gemini/') || req.url.startsWith('/proxy-sheet') || req.url.startsWith('/health')) {
+    return apiRouter(req, res, next);
+  }
+  next();
+});
+
+// API 404 handler - MUST be before Vite/Static fallback
+app.all("/api/*", (req, res) => {
+  console.warn(`API Not Found: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({ 
+    error: "API endpoint not found",
+    details: `Route ${req.method} ${req.originalUrl} matches no handler.`
+  });
+});
+
+async function startServer() {
   const isProduction = process.env.NODE_ENV === "production";
   const distPath = path.join(process.cwd(), "dist");
   const distHtmlPath = path.join(distPath, "index.html");
 
-  // --- API Routes (Defined synchronously at top level or early in startServer) ---
-  app.get("/api/health", (req, res) => {
-    res.json({ 
-      status: "ok", 
-      time: new Date().toISOString(),
-      env: {
-        node_env: process.env.NODE_ENV,
-        gemini: !!process.env.GEMINI_API_KEY,
-        firebase: !!process.env.VITE_FIREBASE_PROJECT_ID
-      }
-    });
-  });
-
-  app.post("/api/gemini/generateContent", handleGemini);
-  app.post("/api/gemini/generateContent/", handleGemini);
-
-  app.get("/api/proxy-sheet", async (req, res) => {
-    const sheetId = req.query.id as string;
-    const gid = req.query.gid as string;
-    if (!sheetId) return res.status(400).json({ error: "Missing sheet ID" });
-
-    try {
-      const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
-      console.info(`Proxying Sheet: ${url}`);
-      
-      const response = await fetch(url);
-      if (!response.ok) {
-        return res.status(response.status).json({ error: `Google Sheets returned ${response.status}` });
-      }
-      
-      const contentType = response.headers.get("content-type");
-      if (contentType && contentType.includes("text/html")) {
-        return res.status(401).json({ error: "Sheet not public (Anyone with link can view required)" });
-      }
-
-      const csvText = await response.text();
-      res.send(csvText);
-    } catch (err: any) {
-      console.error('Sheet Proxy Error:', err);
-      res.status(500).json({ error: "Network error fetching sheet: " + err.message });
-    }
-  });
-
-  // Basic request logger
-  app.use((req, res, next) => {
-    const timestamp = new Date().toISOString();
-    console.info(`[${timestamp}] ${req.method} ${req.originalUrl}`);
-    next();
-  });
-
-  // API 404 handler - MUST be before Vite/Static fallback
-  app.all("/api/*", (req, res) => {
-    console.warn(`API Not Found: ${req.method} ${req.originalUrl}`);
-    res.status(404).json({ 
-      error: "API endpoint not found",
-      details: `Route ${req.method} ${req.originalUrl} matches no handler.`
-    });
-  });
-
-  async function startServer() {
-  // --- Pre-route Middlewares ---
-  app.use(express.json({ limit: '50mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-  // Vite middleware for development
   if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -150,7 +152,6 @@ const PORT = 3000;
     });
     app.use(vite.middlewares);
     
-    // Ensure SPA fallback works in dev if vite middleware falls through
     app.use('*', async (req, res, next) => {
       if (req.originalUrl.startsWith('/api/')) return next();
       try {
@@ -163,42 +164,28 @@ const PORT = 3000;
       }
     });
   } else {
-    const distPath = path.join(process.cwd(), "dist");
-    console.info(`Serving static files from: ${distPath}`);
-    
     app.use(express.static(distPath));
-    
-    // Handle SPA fallback for client-side routing
     app.get("*", (req, res) => {
-      // API routes should never reach here (handled above)
-      if (req.originalUrl.startsWith('/api/')) {
-        return res.status(404).json({ error: "API endpoint not found (fallback)" });
-      }
-      
+      if (req.originalUrl.startsWith('/api/')) return res.status(404).json({ error: "API 404" });
       if (fs.existsSync(distHtmlPath)) {
         res.sendFile(distHtmlPath);
       } else {
-        console.error(`ERROR: dist/index.html not found! Path: ${distHtmlPath}`);
-        res.status(500).send("The application build appears to be missing. Please rebuild.");
+        res.status(500).send("Build artifacts missing.");
       }
     });
   }
 
-  // Only listen if not in a serverless environment (e.g. Vercel)
+  // Only listen if not in serverless (like Vercel)
   if (!process.env.VERCEL && !process.env.NOW_REGION) {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
   }
-  
-  return app;
 }
 
-// Initialize the server logic
 startServer().catch(err => {
   console.error("Failed to start server:", err);
 });
 
-// Export app for serverless environments like Vercel
 export default app;
 export { app };
