@@ -60,7 +60,13 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
     }
 
     console.info(`Calling Gemini: ${payload.model}`);
-    const response = await aiInstance.models.generateContent(payload);
+    
+    // Add timeout handling to generateContent
+    const PromiseTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Gemini API timeout exceeded (30s)")), 30000));
+    const response = await Promise.race([
+      aiInstance.models.generateContent(payload),
+      PromiseTimeout
+    ]) as any;
     
     res.json({
       text: response.text,
@@ -69,7 +75,7 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
     });
   } catch (err: any) {
     console.error("Gemini proxy logic error:", err);
-    res.status(err.status || 500).json({ 
+    res.status(err.status && err.status !== 500 ? err.status : 400).json({ 
       error: err.message || "Internal AI Proxy Error",
       details: err.toString()
     });
@@ -103,21 +109,29 @@ apiRouter.get("/proxy-sheet", async (req, res) => {
     const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
     console.info(`Proxying Sheet: ${url}`);
     
-    const response = await fetch(url);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+    
+    const response = await fetch(url, { signal: controller.signal as any });
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
+      console.warn(`Google sheets returned non-ok: ${response.status}`);
       return res.status(response.status).json({ error: `Google Sheets returned ${response.status}` });
     }
     
     const contentType = response.headers.get("content-type");
     if (contentType && contentType.includes("text/html")) {
+      console.warn(`Google sheets returned HTML (likely 404 redirect)`);
       return res.status(401).json({ error: "Sheet not public (Anyone with link can view required)" });
     }
 
     const csvText = await response.text();
+    console.info(`Successfully fetched sheet length: ${csvText.length}`);
     res.send(csvText);
   } catch (err: any) {
-    console.error('Sheet Proxy Error:', err);
-    res.status(500).json({ error: "Network error fetching sheet: " + err.message });
+    console.error('Sheet Proxy Error Object:', err);
+    res.status(400).json({ error: "Network error fetching sheet: " + err.name + " " + err.message });
   }
 });
 
