@@ -187,13 +187,23 @@ async function startServer() {
     });
   }
 
-  // Only listen if not in serverless (like Vercel)
-  if (!process.env.VERCEL && !process.env.NOW_REGION) {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  }
+  // Bind to 0.0.0.0 and PORT completely indiscriminately so we don't accidentally skip listening
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+  
+  server.on('error', (e) => {
+    console.error("Server bind error:", e);
+  });
 }
+
+// Global unhandled handlers to prevent crashes from taking down server silently
+process.on('uncaughtException', (err) => {
+  console.error('Unhandled Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 startServer().catch(err => {
   console.error("Failed to start server:", err);
