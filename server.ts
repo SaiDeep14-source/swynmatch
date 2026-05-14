@@ -4,6 +4,7 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
+import axios from "axios";
 
 dotenv.config({ override: true });
 
@@ -115,7 +116,6 @@ apiRouter.get("/proxy-sheet", async (req, res) => {
     const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
     console.info(`Proxying Sheet: ${url}`);
     
-    const axios = require('axios');
     const response = await axios.get(url, { responseType: 'text', timeout: 15000 });
     const csvText = response.data;
 
