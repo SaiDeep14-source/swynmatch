@@ -27,7 +27,7 @@ const getGeminiClient = () => {
 };
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
 // --- Pre-route Middlewares ---
 app.use(express.json({ limit: '50mb' }));
@@ -115,24 +115,15 @@ apiRouter.get("/proxy-sheet", async (req, res) => {
     const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
     console.info(`Proxying Sheet: ${url}`);
     
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-    
-    const response = await fetch(url, { signal: controller.signal as any });
-    clearTimeout(timeoutId);
+    const axios = require('axios');
+    const response = await axios.get(url, { responseType: 'text', timeout: 15000 });
+    const csvText = response.data;
 
-    if (!response.ok) {
-      console.warn(`Google sheets returned non-ok: ${response.status}`);
-      return res.status(response.status).json({ error: `Google Sheets returned ${response.status}` });
-    }
-    
-    const contentType = response.headers.get("content-type");
-    if (contentType && contentType.includes("text/html")) {
-      console.warn(`Google sheets returned HTML (likely 404 redirect)`);
-      return res.status(401).json({ error: "Sheet not public (Anyone with link can view required)" });
+    // Check if it's HTML (indicating a 404/auth page)
+    if (typeof csvText === 'string' && csvText.trim().startsWith('<')) {
+       return res.status(401).json({ error: "Sheet not public (Anyone with link can view required)" });
     }
 
-    const csvText = await response.text();
     console.info(`Successfully fetched sheet length: ${csvText.length}`);
     res.send(csvText);
   } catch (err: any) {
@@ -161,9 +152,10 @@ app.all("/api/*", (req, res) => {
 });
 
 async function startServer() {
-  const isProduction = process.env.NODE_ENV === "production";
   const distPath = path.join(process.cwd(), "dist");
   const distHtmlPath = path.join(distPath, "index.html");
+  // Check both env var and presence of built output for safety
+  const isProduction = process.env.NODE_ENV === "production" || process.env.NODE_ENV === "prod" || fs.existsSync(distHtmlPath);
 
   if (!isProduction) {
     const vite = await createViteServer({
