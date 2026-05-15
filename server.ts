@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
-import { GoogleGenAI } from "@google/genai";
 
 dotenv.config({ override: true });
 
@@ -11,22 +10,8 @@ const cleanEnvValue = (val: string | undefined) => {
   return val.trim().replace(/^["'](.*)["']$/, '$1').trim();
 };
 
-// Ensure AI proxy uses server-side key
-let ai: GoogleGenAI | null = null;
-const getGeminiClient = () => {
-  if (!ai) {
-    const key = cleanEnvValue(process.env.GEMINI_API_KEY);
-    if (!key) {
-      console.error("FATAL: GEMINI_API_KEY is not defined in environment.");
-      throw new Error("GEMINI_API_KEY is not defined. Please set it in platform settings.");
-    }
-    ai = new GoogleGenAI({ apiKey: key });
-  }
-  return ai;
-};
-
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 const DEFAULT_GEMINI_MODEL = cleanEnvValue(process.env.GEMINI_MODEL) || "gemini-2.5-flash";
 const LEGACY_OR_INVALID_GEMINI_MODELS = new Set(["gemini-pro", "gemini-3-pro"]);
 
@@ -55,6 +40,54 @@ const withTimeout = async (url: string, timeoutMs: number) => {
   }
 };
 
+const postJsonWithTimeout = async (url: string, body: unknown, timeoutMs: number) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const toGeminiRestBody = (payload: any) => {
+  const body: any = { ...payload };
+  delete body.model;
+
+  if (typeof body.contents === "string") {
+    body.contents = [
+      {
+        role: "user",
+        parts: [{ text: body.contents }]
+      }
+    ];
+  }
+
+  if (body.config) {
+    body.generationConfig = {
+      ...(body.generationConfig || {}),
+      ...body.config
+    };
+    delete body.config;
+  }
+
+  return body;
+};
+
+const extractGeminiText = (data: any) => {
+  if (typeof data?.text === "string") return data.text;
+  const parts = data?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return "";
+  return parts.map((part: any) => part?.text || "").join("");
+};
+
 // --- Pre-route Middlewares ---
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -76,7 +109,7 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
     const key = cleanEnvValue(process.env.GEMINI_API_KEY);
     if (!key) {
       console.error("Gemini API key missing in environment");
-      return res.status(400).json({ error: "Gemini API key not found in platform settings." });
+      return res.status(400).json({ error: "Gemini API key not found. Set GEMINI_API_KEY in your deployment environment." });
     }
     
     // Ensure we handle JSON parsing errors if payload is weird
@@ -91,23 +124,32 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
       });
     }
 
-    const aiInstance = getGeminiClient();
-    
-    payload.model = normalizeGeminiModel(payload.model);
+    const model = normalizeGeminiModel(payload.model);
 
-    console.info(`Calling Gemini: ${payload.model}`);
-    
-    // Add timeout handling to generateContent
-    const PromiseTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Gemini API timeout exceeded (30s)")), 30000));
-    const response = await Promise.race([
-      aiInstance.models.generateContent(payload),
-      PromiseTimeout
-    ]) as any;
+    console.info(`Calling Gemini: ${model}`);
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+    const upstream = await postJsonWithTimeout(url, toGeminiRestBody(payload), 30000);
+    const responseText = await upstream.text();
+    let data: any = {};
+
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      data = { error: { message: responseText || "Gemini returned a non-JSON response." } };
+    }
+
+    if (!upstream.ok) {
+      return res.status(upstream.status).json({
+        error: data?.error?.message || `Gemini API returned ${upstream.status}`,
+        details: data
+      });
+    }
     
     return res.status(200).json({
-      text: response.text,
-      usageMetadata: response.usageMetadata,
-      candidates: response.candidates
+      text: extractGeminiText(data),
+      usageMetadata: data.usageMetadata,
+      candidates: data.candidates
     });
   } catch (err: any) {
     console.error("Gemini proxy logic error:", err);
@@ -202,22 +244,8 @@ apiRouter.get("/proxy-sheet", async (req, res) => {
   }
 });
 
-// Mount the router at both root and /api to be safe
+// Mount API routes before static assets.
 app.use("/api", apiRouter);
-app.use("/", (req, res, next) => {
-  // Determine the actual intended URL. Vercel sometimes rewrites req.url to the destination.
-  const vercelOriginalUrl = req.headers['x-now-route-matches'] || req.headers['x-vercel-id'] ? req.originalUrl : null;
-  const targetUrl = vercelOriginalUrl || req.url;
-  
-  if (targetUrl.includes('/gemini/') || targetUrl.includes('/proxy-sheet') || targetUrl.includes('/health')) {
-    // We need to rewrite req.url to strip '/api' so apiRouter matches correctly
-    if (req.url.startsWith('/api/')) {
-        req.url = req.url.replace('/api', '');
-    }
-    return apiRouter(req, res, next);
-  }
-  next();
-});
 
 // API 404 handler - MUST be before Vite/Static fallback
 app.all("/api/*", (req, res) => {
@@ -302,13 +330,9 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-if (process.env.VERCEL) {
-  installProductionAssets();
-} else {
-  startServer().catch(err => {
-    console.error("Failed to start server:", err);
-  });
-}
+startServer().catch(err => {
+  console.error("Failed to start server:", err);
+});
 
 export default app;
 export { app };
