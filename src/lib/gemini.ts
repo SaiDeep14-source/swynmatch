@@ -12,7 +12,7 @@ export const generateGeminiContent = async (reqBody: any) => {
   });
 
   if (!res.ok) {
-    let errorMessage = "AI Request failed";
+    let errorMessage = `AI request failed (Status: ${res.status})`;
     try {
       const contentType = res.headers.get("content-type");
       if (contentType && contentType.includes("application/json")) {
@@ -21,7 +21,7 @@ export const generateGeminiContent = async (reqBody: any) => {
       } else {
         const textError = await res.text();
         console.error("Non-JSON error response from API:", textError.substring(0, 200));
-        errorMessage = `API Error (${res.status}): The server returned an invalid response format. This may happen if ad-blockers or proxies (like AI Studio cookie check) intercept the request. Please try opening the app in a new tab or incognito mode.`;
+        errorMessage = `API Error (${res.status}): ${textError.substring(0, 200) || "The server returned an empty error response."}`;
       }
     } catch (e) {
       console.error("Failed to parse error response:", e);

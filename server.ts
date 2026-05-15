@@ -3,7 +3,6 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
-import axios from "axios";
 
 dotenv.config({ override: true });
 
@@ -28,6 +27,33 @@ const getGeminiClient = () => {
 
 const app = express();
 const PORT = 3000;
+const DEFAULT_GEMINI_MODEL = cleanEnvValue(process.env.GEMINI_MODEL) || "gemini-2.5-flash";
+const LEGACY_OR_INVALID_GEMINI_MODELS = new Set(["gemini-pro", "gemini-3-pro"]);
+
+const normalizeGeminiModel = (model: unknown) => {
+  const requestedModel = typeof model === "string" ? model.trim() : "";
+  if (!requestedModel || LEGACY_OR_INVALID_GEMINI_MODELS.has(requestedModel)) {
+    return DEFAULT_GEMINI_MODEL;
+  }
+  return requestedModel;
+};
+
+const withTimeout = async (url: string, timeoutMs: number) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "Accept": "text/csv,text/plain,*/*",
+        "User-Agent": "swynmatch-sheet-proxy/1.0"
+      }
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
 
 // --- Pre-route Middlewares ---
 app.use(express.json({ limit: '50mb' }));
@@ -54,7 +80,7 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
     }
     
     // Ensure we handle JSON parsing errors if payload is weird
-    const payload = req.body || {};
+    const payload = { ...(req.body || {}) };
     
     // Check if parts are structured correctly
     if (payload.contents && Array.isArray(payload.contents)) {
@@ -67,9 +93,7 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
 
     const aiInstance = getGeminiClient();
     
-    if (!payload.model || payload.model !== "gemini-pro") {
-      payload.model = "gemini-pro";
-    }
+    payload.model = normalizeGeminiModel(payload.model);
 
     console.info(`Calling Gemini: ${payload.model}`);
     
@@ -87,8 +111,10 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
     });
   } catch (err: any) {
     console.error("Gemini proxy logic error:", err);
-    let statusCode = 400; // use 400 to prevent proxy HTML error pages
+    let statusCode = 502; // keep proxy errors as JSON while signalling upstream failure
     if (typeof err.status === 'number' && err.status >= 400 && err.status < 500) {
+      statusCode = err.status;
+    } else if (typeof err.status === 'number' && err.status >= 500 && err.status < 600) {
       statusCode = err.status;
     }
     
@@ -128,33 +154,51 @@ apiRouter.post("/gemini/generateContent", handleGemini);
 apiRouter.post("/gemini/generateContent/", handleGemini);
 
 apiRouter.get("/proxy-sheet", async (req, res) => {
-  const sheetId = req.query.id as string;
-  const gid = req.query.gid as string;
+  const sheetId = String(req.query.id || "").trim();
+  const gid = String(req.query.gid || "").trim();
   if (!sheetId) return res.status(400).json({ error: "Missing sheet ID" });
+  if (!/^[a-zA-Z0-9-_]+$/.test(sheetId)) {
+    return res.status(400).json({ error: "Invalid Google Sheet ID. Paste the spreadsheet URL or the ID from /spreadsheets/d/{id}." });
+  }
+  if (gid && !/^\d+$/.test(gid)) {
+    return res.status(400).json({ error: "Invalid Google Sheet gid. It should be a numeric tab ID." });
+  }
 
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
-    console.info(`Proxying Sheet: ${url}`);
-    
-    const response = await axios.get(url, { responseType: 'text', timeout: 15000 });
-    const csvText = response.data;
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
+    const gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${gid ? `&gid=${gid}` : ''}`;
+    console.info(`Proxying Sheet: ${exportUrl}`);
+
+    let upstream = await withTimeout(exportUrl, 15000);
+    if (!upstream.ok && upstream.status >= 400) {
+      console.warn(`Sheet export endpoint returned ${upstream.status}; trying gviz CSV fallback.`);
+      upstream = await withTimeout(gvizUrl, 15000);
+    }
+
+    const csvText = await upstream.text();
+
+    if (!upstream.ok) {
+      const status = upstream.status === 404 ? 404 : 502;
+      return res.status(status).json({
+        error: upstream.status === 404
+          ? "Google Sheet not found. Please verify the URL and ensure the sheet still exists."
+          : `Google Sheets returned ${upstream.status}. Ensure the sheet is shared as "Anyone with the link can view".`
+      });
+    }
 
     // Check if it's HTML (indicating a 404/auth page)
-    if (typeof csvText === 'string' && csvText.trim().startsWith('<')) {
-       return res.status(401).json({ error: "Sheet not public (Anyone with link can view required)" });
+    if (typeof csvText === 'string' && /^\s*</.test(csvText)) {
+       return res.status(403).json({ error: "Sheet not public. Share the responses spreadsheet as \"Anyone with the link can view\" and sync again." });
     }
 
     console.info(`Successfully fetched sheet length: ${csvText.length}`);
-    res.send(csvText);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).send(csvText);
   } catch (err: any) {
-    console.error('Sheet Proxy Error Object:', err.message);
-    
-    // Explicitly handle Google Sheets 404 (Sheet not found or deleted)
-    if (err.response && err.response.status === 404) {
-      return res.status(404).json({ error: "Google Sheet not found. Please verify the URL and ensure the sheet still exists." });
-    }
-    
-    res.status(400).json({ error: "Network error fetching sheet: " + err.message });
+    const message = err?.name === "AbortError" ? "Timed out fetching Google Sheet." : (err?.message || String(err));
+    console.error('Sheet Proxy Error Object:', message);
+    res.status(502).json({ error: "Network error fetching sheet: " + message });
   }
 });
 
@@ -183,6 +227,25 @@ app.all("/api/*", (req, res) => {
     details: `Route ${req.method} ${req.originalUrl} matches no handler.`
   });
 });
+
+let productionAssetsInstalled = false;
+function installProductionAssets() {
+  if (productionAssetsInstalled) return;
+  productionAssetsInstalled = true;
+
+  const distPath = path.join(process.cwd(), "dist");
+  const distHtmlPath = path.join(distPath, "index.html");
+
+  app.use(express.static(distPath));
+  app.get("*", (req, res) => {
+    if (req.originalUrl.startsWith('/api/')) return res.status(404).json({ error: "API 404" });
+    if (fs.existsSync(distHtmlPath)) {
+      res.sendFile(distHtmlPath);
+    } else {
+      res.status(500).send("Build artifacts missing.");
+    }
+  });
+}
 
 async function startServer() {
   const distPath = path.join(process.cwd(), "dist");
@@ -218,15 +281,7 @@ async function startServer() {
       }
     });
   } else {
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      if (req.originalUrl.startsWith('/api/')) return res.status(404).json({ error: "API 404" });
-      if (fs.existsSync(distHtmlPath)) {
-        res.sendFile(distHtmlPath);
-      } else {
-        res.status(500).send("Build artifacts missing.");
-      }
-    });
+    installProductionAssets();
   }
 
   // Bind to 0.0.0.0 and PORT completely indiscriminately so we don't accidentally skip listening
@@ -247,7 +302,9 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-if (!process.env.VERCEL) {
+if (process.env.VERCEL) {
+  installProductionAssets();
+} else {
   startServer().catch(err => {
     console.error("Failed to start server:", err);
   });
