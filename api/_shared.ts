@@ -1,5 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
-
 export const cleanEnvValue = (val: string | undefined) => {
   if (!val) return "";
   return val.trim().replace(/^["'](.*)["']$/, "$1").trim();
@@ -37,17 +35,12 @@ export const normalizeGeminiModel = (model: unknown) => {
   return requestedModel;
 };
 
-let ai: GoogleGenAI | null = null;
-
-export const getGeminiClient = () => {
-  if (!ai) {
-    const key = cleanEnvValue(process.env.GEMINI_API_KEY);
-    if (!key) {
-      throw Object.assign(new Error("Gemini API key not found in platform settings."), { status: 400 });
-    }
-    ai = new GoogleGenAI({ apiKey: key });
+export const getGeminiApiKey = () => {
+  const key = cleanEnvValue(process.env.GEMINI_API_KEY);
+  if (!key) {
+    throw Object.assign(new Error("Gemini API key not found in platform settings."), { status: 400 });
   }
-  return ai;
+  return key;
 };
 
 export const fetchWithTimeout = async (url: string, timeoutMs: number) => {
@@ -61,6 +54,23 @@ export const fetchWithTimeout = async (url: string, timeoutMs: number) => {
         Accept: "text/csv,text/plain,*/*",
         "User-Agent": "swynmatch-sheet-proxy/1.0"
       }
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+export const postJsonWithTimeout = async (url: string, body: unknown, timeoutMs: number) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
     });
   } finally {
     clearTimeout(timeout);
