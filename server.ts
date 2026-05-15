@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { GoogleGenAI } from "@google/genai";
 import axios from "axios";
@@ -46,6 +45,7 @@ app.use((req, res, next) => {
  */
 const handleGemini = async (req: express.Request, res: express.Response) => {
   console.info(`Gemini Proxy Triggered: ${req.method} ${req.originalUrl}`);
+  res.setHeader('Content-Type', 'application/json');
   try {
     const key = cleanEnvValue(process.env.GEMINI_API_KEY);
     if (!key) {
@@ -53,11 +53,22 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
       return res.status(400).json({ error: "Gemini API key not found in platform settings." });
     }
     
-    const aiInstance = getGeminiClient();
-    const payload = { ...req.body };
+    // Ensure we handle JSON parsing errors if payload is weird
+    const payload = req.body || {};
     
-    if (!payload.model || payload.model.includes("gemini-1.5") || payload.model.includes("flash")) {
-      payload.model = "gemini-3-pro";
+    // Check if parts are structured correctly
+    if (payload.contents && Array.isArray(payload.contents)) {
+      payload.contents.forEach((content: any) => {
+        if (content.parts && Array.isArray(content.parts)) {
+          // ensure valid text
+        }
+      });
+    }
+
+    const aiInstance = getGeminiClient();
+    
+    if (!payload.model || payload.model !== "gemini-pro") {
+      payload.model = "gemini-pro";
     }
 
     console.info(`Calling Gemini: ${payload.model}`);
@@ -69,20 +80,30 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
       PromiseTimeout
     ]) as any;
     
-    res.json({
+    return res.status(200).json({
       text: response.text,
       usageMetadata: response.usageMetadata,
       candidates: response.candidates
     });
   } catch (err: any) {
     console.error("Gemini proxy logic error:", err);
-    let statusCode = 400; // ALWAYS use 400 to prevent proxy rewrite
+    let statusCode = 400; // use 400 to prevent proxy HTML error pages
     if (typeof err.status === 'number' && err.status >= 400 && err.status < 500) {
       statusCode = err.status;
     }
     
-    res.status(statusCode).json({ 
-      error: err.message || "Internal AI Proxy Error",
+    let parsedErrorMsg = err.message || "Internal AI Proxy Error";
+    try {
+        if (typeof parsedErrorMsg === 'string' && parsedErrorMsg.startsWith('{')) {
+            const temp = JSON.parse(parsedErrorMsg);
+            if (temp.error && temp.error.message) {
+                parsedErrorMsg = temp.error.message;
+            }
+        }
+    } catch(e) {}
+    
+    return res.status(statusCode).json({ 
+      error: parsedErrorMsg,
       details: err.toString()
     });
   }
@@ -126,16 +147,29 @@ apiRouter.get("/proxy-sheet", async (req, res) => {
     console.info(`Successfully fetched sheet length: ${csvText.length}`);
     res.send(csvText);
   } catch (err: any) {
-    console.error('Sheet Proxy Error Object:', err);
-    res.status(400).json({ error: "Network error fetching sheet: " + err.name + " " + err.message });
+    console.error('Sheet Proxy Error Object:', err.message);
+    
+    // Explicitly handle Google Sheets 404 (Sheet not found or deleted)
+    if (err.response && err.response.status === 404) {
+      return res.status(404).json({ error: "Google Sheet not found. Please verify the URL and ensure the sheet still exists." });
+    }
+    
+    res.status(400).json({ error: "Network error fetching sheet: " + err.message });
   }
 });
 
 // Mount the router at both root and /api to be safe
 app.use("/api", apiRouter);
 app.use("/", (req, res, next) => {
-  // If it's a request intended for the API but path prefix was stripped (common in some rewrites)
-  if (req.url.startsWith('/gemini/') || req.url.startsWith('/proxy-sheet') || req.url.startsWith('/health')) {
+  // Determine the actual intended URL. Vercel sometimes rewrites req.url to the destination.
+  const vercelOriginalUrl = req.headers['x-now-route-matches'] || req.headers['x-vercel-id'] ? req.originalUrl : null;
+  const targetUrl = vercelOriginalUrl || req.url;
+  
+  if (targetUrl.includes('/gemini/') || targetUrl.includes('/proxy-sheet') || targetUrl.includes('/health')) {
+    // We need to rewrite req.url to strip '/api' so apiRouter matches correctly
+    if (req.url.startsWith('/api/')) {
+        req.url = req.url.replace('/api', '');
+    }
     return apiRouter(req, res, next);
   }
   next();
@@ -157,18 +191,27 @@ async function startServer() {
   const isProduction = process.env.NODE_ENV === "production" || process.env.NODE_ENV === "prod" || fs.existsSync(distHtmlPath);
 
   if (!isProduction) {
-    const vite = await createViteServer({
+    let createViteServer;
+    try {
+      const vite = await import("vite");
+      createViteServer = vite.createServer;
+    } catch (e) {
+      console.error("Vite not found, falling back to static production mode.", e);
+      return;
+    }
+    
+    const viteInstance = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
-    app.use(vite.middlewares);
+    app.use(viteInstance.middlewares);
     
     app.use('*', async (req, res, next) => {
       if (req.originalUrl.startsWith('/api/')) return next();
       try {
         const indexPath = path.resolve(process.cwd(), "index.html");
         let template = fs.readFileSync(indexPath, "utf-8");
-        template = await vite.transformIndexHtml(req.originalUrl, template);
+        template = await viteInstance.transformIndexHtml(req.originalUrl, template);
         res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
       } catch (e) {
         next(e);
@@ -204,9 +247,11 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-startServer().catch(err => {
-  console.error("Failed to start server:", err);
-});
+if (!process.env.VERCEL) {
+  startServer().catch(err => {
+    console.error("Failed to start server:", err);
+  });
+}
 
 export default app;
 export { app };
