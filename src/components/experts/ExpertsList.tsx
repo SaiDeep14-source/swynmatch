@@ -177,7 +177,7 @@ export const ExpertsList = () => {
 
     try {
       console.info(`Starting sync for sheet: ${sheetObj.name}`);
-      let sid = sheetObj.url.trim();
+      let sid = sheetObj.url.trim().replace(/\s+/g, '');
       let gid = '';
 
       if (sid.includes('docs.google.com')) {

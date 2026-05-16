@@ -133,7 +133,7 @@ apiRouter.get("/proxy-sheet", async (req, res) => {
   if (!sheetId) return res.status(400).json({ error: "Missing sheet ID" });
 
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
+    const url = `https://docs.google.com/spreadsheets/d/${sheetId.replace(/\s+/g, '')}/export?format=csv${gid ? `&gid=${gid.replace(/\s+/g, '')}` : ''}`;
     console.info(`Proxying Sheet: ${url}`);
     
     const response = await axios.get(url, { responseType: 'text', timeout: 15000 });
