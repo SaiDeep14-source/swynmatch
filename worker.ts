@@ -2,10 +2,25 @@ export default {
   async fetch(request: Request, env: any, ctx: any) {
     const url = new URL(request.url);
 
+    // CORS preflight handle globally
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        }
+      });
+    }
+
     // Handle /api/gemini/generateContent
     if (url.pathname === '/api/gemini/generateContent' || url.pathname === '/api/gemini/generateContent/') {
       if (request.method !== 'POST') {
-        return new Response('Method not allowed', { status: 405 });
+        return new Response('Method not allowed', { 
+          status: 405, 
+          headers: { "Access-Control-Allow-Origin": "*" } 
+        });
       }
 
       try {
@@ -15,7 +30,10 @@ export default {
         if (!apiKey) {
           return new Response(JSON.stringify({ error: "Gemini API key not found in Cloudflare properties (env.GEMINI_API_KEY)." }), {
             status: 400,
-            headers: { "Content-Type": "application/json" }
+            headers: { 
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*"
+            }
           });
         }
         
@@ -24,7 +42,10 @@ export default {
         if (apiKey === "PLACEHOLDER" || apiKey.length < 10) {
            return new Response(JSON.stringify({ error: "Invalid API key format in Cloudflare properties (env.GEMINI_API_KEY)." }), {
             status: 400,
-            headers: { "Content-Type": "application/json" }
+            headers: { 
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*" 
+            }
           });
         }
 
@@ -47,7 +68,10 @@ export default {
              details: data
            }), {
              status: geminiResponse.status === 403 ? 400 : geminiResponse.status,
-             headers: { "Content-Type": "application/json" }
+             headers: { 
+               "Content-Type": "application/json",
+               "Access-Control-Allow-Origin": "*" 
+             }
            });
         }
 
@@ -63,13 +87,19 @@ export default {
           candidates: data.candidates
         }), {
           status: 200,
-          headers: { "Content-Type": "application/json" }
+          headers: { 
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*" 
+          }
         });
 
       } catch (err: any) {
         return new Response(JSON.stringify({ error: "Worker error: " + err?.message }), {
           status: 500,
-          headers: { "Content-Type": "application/json" }
+          headers: { 
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+          }
         });
       }
     }

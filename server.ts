@@ -126,14 +126,17 @@ apiRouter.get("/health", (req, res) => {
     time: new Date().toISOString(),
     env: {
       node_env: process.env.NODE_ENV,
-      gemini: !!process.env.GEMINI_API_KEY,
-      firebase: !!process.env.VITE_FIREBASE_PROJECT_ID
+      gemini: !!process.env.GEMINI_API_KEY
     }
   });
 });
 
 apiRouter.post("/gemini/generateContent", handleGemini);
 apiRouter.post("/gemini/generateContent/", handleGemini);
+
+// Add an exact handler to the base app to bypass any router weirdness in Vercel
+app.post("/api/gemini/generateContent", handleGemini);
+app.post("/api/gemini/generateContent/", handleGemini);
 
 apiRouter.get("/proxy-sheet", async (req, res) => {
   const sheetId = req.query.id as string;

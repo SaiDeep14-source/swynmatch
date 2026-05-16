@@ -23,8 +23,14 @@ export const generateGeminiContent = async (reqBody: any) => {
         }
       } else {
         const textError = await res.text();
-        console.error("Non-JSON error response from API:", textError.substring(0, 200));
-        errorMessage = `API Error (${res.status}): The server returned an invalid response format. This may happen if ad-blockers or proxies (like AI Studio cookie check) intercept the request. Please try opening the app in a new tab or incognito mode.`;
+        console.error("Non-JSON error response from API:", textError.substring(0, 500));
+        
+        let hint = "";
+        if (textError.includes('Not Found') || res.status === 404) {
+            hint = " The proxy endpoint (/api/gemini/generateContent) is missing or not configured correctly in your deployment environment (Vercel, Cloudflare, etc). Please ensure your serverless functions are deployed properly.";
+        }
+        
+        errorMessage = `API Error (${res.status}): The server returned an invalid response format.${hint} Please try opening the app in a new tab or incognito mode.`;
       }
     } catch (e) {
       console.error("Failed to parse error response:", e);

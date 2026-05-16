@@ -1,18 +1,41 @@
-export async function onRequestPost(context) {
+export async function onRequest(context) {
   const { request, env } = context;
   
+  // Handle CORS preflight
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      }
+    });
+  }
+
+  // Only allow POST
+  if (request.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+
   try {
     const key = env.GEMINI_API_KEY;
     if (!key) {
       return new Response(JSON.stringify({ error: "Gemini API key not found in platform settings." }), {
         status: 400,
-        headers: { "Content-Type": "application/json" }
+        headers: { 
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*"
+        }
       });
     }
 
     const payload = await request.json();
-    if (!payload.model || payload.model !== "gemini-pro") {
-      payload.model = "gemini-pro"; // Enforce the requested model
+    if (!payload.model) {
+      payload.model = "gemini-2.5-flash"; // Enforce the required default
     }
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${payload.model}:generateContent?key=${key}`;
@@ -37,7 +60,10 @@ export async function onRequestPost(context) {
     if (!response.ok) {
         return new Response(JSON.stringify({ error: data.error?.message || "Internal AI Proxy Error" }), {
             status: response.status >= 400 && response.status < 500 ? response.status : 400,
-            headers: { "Content-Type": "application/json" }
+            headers: { 
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*"
+            }
         });
     }
 
@@ -47,7 +73,10 @@ export async function onRequestPost(context) {
         candidates: data.candidates
     }), {
         status: 200,
-        headers: { "Content-Type": "application/json" }
+        headers: { 
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*"
+        }
     });
   } catch (err) {
     let errorMsg = err?.message || "Internal AI Proxy Error";
@@ -56,7 +85,10 @@ export async function onRequestPost(context) {
     }
     return new Response(JSON.stringify({ error: errorMsg }), {
       status: 400,
-      headers: { "Content-Type": "application/json" }
+      headers: { 
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*"
+      }
     });
   }
 }
