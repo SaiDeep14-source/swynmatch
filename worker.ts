@@ -2,6 +2,78 @@ export default {
   async fetch(request: Request, env: any, ctx: any) {
     const url = new URL(request.url);
 
+    // Handle /api/gemini/generateContent
+    if (url.pathname === '/api/gemini/generateContent' || url.pathname === '/api/gemini/generateContent/') {
+      if (request.method !== 'POST') {
+        return new Response('Method not allowed', { status: 405 });
+      }
+
+      try {
+        const payload = await request.json() as any;
+        let apiKey = env.GEMINI_API_KEY;
+        
+        if (!apiKey) {
+          return new Response(JSON.stringify({ error: "Gemini API key not found in Cloudflare properties (env.GEMINI_API_KEY)." }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+        
+        apiKey = apiKey.trim().replace(/^["'](.*)["']$/, '$1').trim();
+        
+        if (apiKey === "PLACEHOLDER" || apiKey.length < 10) {
+           return new Response(JSON.stringify({ error: "Invalid API key format in Cloudflare properties (env.GEMINI_API_KEY)." }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
+        const model = payload.model || "gemini-2.5-flash";
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+        const geminiResponse = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await geminiResponse.json() as any;
+
+        if (!geminiResponse.ok) {
+           return new Response(JSON.stringify({ 
+             error: data.error?.message || "Gemini API request failed", 
+             details: data
+           }), {
+             status: geminiResponse.status === 403 ? 400 : geminiResponse.status,
+             headers: { "Content-Type": "application/json" }
+           });
+        }
+
+        // Return the exact required format that the client expects (text, usageMetadata, candidates)
+        let text = "";
+        if (data.candidates && data.candidates.length > 0 && data.candidates[0].content?.parts) {
+            text = data.candidates[0].content.parts.map((p: any) => p.text).join("");
+        }
+
+        return new Response(JSON.stringify({
+          text,
+          usageMetadata: data.usageMetadata,
+          candidates: data.candidates
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Worker error: " + err?.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    }
+
     // Handle /api/proxy-sheet
     if (url.pathname === '/api/proxy-sheet') {
       const sheetId = url.searchParams.get("id");

@@ -53,6 +53,13 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
       return res.status(400).json({ error: "Gemini API key not found in platform settings." });
     }
     
+    // Add debugging log for key format
+    console.info(`[DEBUG] Gemini API key length: ${key.length}, starts with: ${key.substring(0, 4)}`);
+    // Check for clear formatting issues
+    if (key === "PLACEHOLDER" || key.length < 10) {
+      return res.status(400).json({ error: "Invalid API key format in platform settings." });
+    }
+    
     // Ensure we handle JSON parsing errors if payload is weird
     const payload = req.body || {};
     
@@ -67,14 +74,14 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
 
     const aiInstance = getGeminiClient();
     
-    if (!payload.model || payload.model !== "gemini-pro") {
-      payload.model = "gemini-pro";
+    if (!payload.model) {
+      payload.model = "gemini-2.5-flash";
     }
 
     console.info(`Calling Gemini: ${payload.model}`);
     
     // Add timeout handling to generateContent
-    const PromiseTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Gemini API timeout exceeded (30s)")), 30000));
+    const PromiseTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Gemini API timeout exceeded (60s)")), 60000));
     const response = await Promise.race([
       aiInstance.models.generateContent(payload),
       PromiseTimeout
@@ -89,7 +96,8 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
     console.error("Gemini proxy logic error:", err);
     let statusCode = 400; // use 400 to prevent proxy HTML error pages
     if (typeof err.status === 'number' && err.status >= 400 && err.status < 500) {
-      statusCode = err.status;
+      // 403 is often intercepted by reverse proxies (like nginx or Cloudflare) which return HTML.
+      statusCode = err.status === 403 ? 400 : err.status;
     }
     
     let parsedErrorMsg = err.message || "Internal AI Proxy Error";

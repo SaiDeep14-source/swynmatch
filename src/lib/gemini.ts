@@ -18,6 +18,9 @@ export const generateGeminiContent = async (reqBody: any) => {
       if (contentType && contentType.includes("application/json")) {
         const errData = await res.json();
         errorMessage = errData.error || errorMessage;
+        if (errorMessage && errorMessage.includes('leaked')) {
+           errorMessage = "Your Gemini API Key has been reported as leaked by Google. Please generate a new API Key in Google AI Studio and update it in your app settings.";
+        }
       } else {
         const textError = await res.text();
         console.error("Non-JSON error response from API:", textError.substring(0, 200));
