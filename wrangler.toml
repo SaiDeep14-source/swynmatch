@@ -1,0 +1,7 @@
+name = "fractional-cxo-matchmaker"
+compatibility_date = "2024-04-05"
+pages_build_output_dir = "dist"
+
+[vars]
+# Ensure you set your Gemini API key in your Cloudflare properties or secret manager:
+# GEMINI_API_KEY = "..."
