@@ -24,7 +24,9 @@ export async function onRequest(context) {
   try {
     const key = env.GEMINI_API_KEY;
     if (!key) {
-      return new Response(JSON.stringify({ error: "Gemini API key not found in platform settings." }), {
+      return new Response(JSON.stringify({ 
+        error: "Deploy Error: Gemini API key is missing. Because you deployed outside of AI Studio, you must manually add the GEMINI_API_KEY to your hosting provider's Dashboard (Vercel/Cloudflare Settings -> Environment variables). AI Studio keys do not automatically sync to third-party hosts." 
+      }), {
         status: 400,
         headers: { 
           "Content-Type": "application/json",

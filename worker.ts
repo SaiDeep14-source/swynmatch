@@ -28,7 +28,9 @@ export default {
         let apiKey = env.GEMINI_API_KEY;
         
         if (!apiKey) {
-          return new Response(JSON.stringify({ error: "Gemini API key not found in Cloudflare properties (env.GEMINI_API_KEY)." }), {
+          return new Response(JSON.stringify({ 
+            error: "Deploy Error: Gemini API key is missing. Because you deployed outside of AI Studio (to Cloudflare), you must manually add the GEMINI_API_KEY to your Cloudflare Dashboard (Settings -> Environment variables). AI Studio keys do not automatically sync to your Cloudflare account." 
+          }), {
             status: 400,
             headers: { 
               "Content-Type": "application/json",
