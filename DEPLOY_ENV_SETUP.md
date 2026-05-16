@@ -38,21 +38,10 @@ VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
 ```
 
 ### Server Execution & Cloud Providers
-Deploy this app as a normal Node.js web service, not as a static-only site. Good fits include Render, Railway, Fly.io, Heroku, DigitalOcean App Platform, Cloud Run, or a VPS.
-
-Use:
-
-```bash
-npm install && npm run build
-npm start
-```
-
-The app serves both the API and the frontend from `server.ts` / `dist/server.cjs`.
+If you're deploying to Vercel, Heroku, Cloud Run, Cloudflare Pages, or Render:
 
 1. Look for the "Environment Variables" or "Secrets" section in their project dashboard.
 2. Add `GEMINI_API_KEY` with your AI Studio key.
 3. Add the `VITE_FIREBASE_*` variables. Since the frontend is built using Vite, these keys must be present **during the build step** so Vite can bake them into `dist/`.
 
 By providing the `.env` variables, the app will prioritize them over the default fallback `firebase-applet-config.json` bindings automatically.
-
-Do not deploy this repo as a Vercel static app or static export. The Google Sheet proxy and Gemini proxy require the Node server to stay running.

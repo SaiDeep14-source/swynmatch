@@ -156,7 +156,7 @@ export const MatchingEngine = () => {
     try {
       const chatPrompt = newMessages.map((m: any) => `${m.role}: ${m.content}`).join('\n');
       const response = await generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3-pro",
         contents: `
           You are the SWYN Match Expert Synthesis Assistant. Help the user define their requirements for searching a fractional expert pool.
           Recent Conversation: ${chatPrompt}

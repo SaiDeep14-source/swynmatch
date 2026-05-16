@@ -124,7 +124,7 @@ export const MatchingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       `;
 
       const analysisResponse = await generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3-pro",
         contents: analysisPrompt,
         config: { responseMimeType: "application/json" }
       });
@@ -177,7 +177,7 @@ export const MatchingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       `;
 
       const rankResponse = await generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3-pro",
         contents: rankPrompt,
         config: { responseMimeType: "application/json" }
       });
