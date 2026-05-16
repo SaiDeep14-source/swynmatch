@@ -11,7 +11,8 @@
     "lint": "tsc --noEmit",
     "start": "node dist/server.cjs",
     "cf:dev": "npm run build && npx wrangler pages dev dist",
-    "cf:deploy": "npm run build && npx wrangler pages deploy dist"
+    "cf:deploy": "npm run build && npx wrangler pages deploy dist",
+    "cf:build": "vite build"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
