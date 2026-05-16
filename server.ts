@@ -147,14 +147,20 @@ apiRouter.get("/proxy-sheet", async (req, res) => {
     console.info(`Successfully fetched sheet length: ${csvText.length}`);
     res.send(csvText);
   } catch (err: any) {
-    console.error('Sheet Proxy Error Object:', err.message);
+    console.error(`[proxy-sheet] Error fetching sheet ${sheetId}. Message: ${err.message}`);
     
-    // Explicitly handle Google Sheets 404 (Sheet not found or deleted)
-    if (err.response && err.response.status === 404) {
-      return res.status(404).json({ error: "Google Sheet not found. Please verify the URL and ensure the sheet still exists." });
+    if (err.response) {
+      console.error(`[proxy-sheet] upstream status: ${err.response.status}`);
+      // Explicitly handle Google Sheets 404 (Sheet not found or deleted)
+      if (err.response.status === 404) {
+        return res.status(404).json({ error: "Google Sheet not found. Please verify the URL and ensure the sheet still exists. (Status 404)" });
+      }
+      
+      const status = err.response.status || 500;
+      return res.status(status).json({ error: `Network error fetching sheet (Status: ${status})` });
     }
     
-    res.status(400).json({ error: "Network error fetching sheet: " + err.message });
+    return res.status(500).json({ error: "Internal error checking sheet: " + err.message });
   }
 });
 

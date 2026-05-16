@@ -206,8 +206,27 @@ export const ExpertsList = () => {
       const response = await fetch(url);
       
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Source "${sheetObj.name}" unreachable (Status: ${response.status}).`);
+        let errMsg = `Source "${sheetObj.name}" unreachable (Status: ${response.status}).`;
+        try {
+          // Attempt to read as text first to see if it's HTML or JSON
+          const errorText = await response.text();
+          try {
+            const errData = JSON.parse(errorText);
+            if (errData && errData.error) {
+              errMsg = errData.error;
+            }
+          } catch (e) {
+            // If it's an HTML page from Cloudflare or Google, capture a snippet
+            if (errorText.includes('<html') || errorText.includes('<!DOCTYPE')) {
+              errMsg = `Server error (Status: ${response.status}). The endpoint returned an HTML page.`;
+            } else {
+              errMsg = `Server error (Status: ${response.status}): ${errorText.substring(0, 50)}...`;
+            }
+          }
+        } catch (e) {
+            // Ignore text reading error
+        }
+        throw new Error(errMsg);
       }
       
       const csvText = await response.text();

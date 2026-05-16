@@ -25,11 +25,15 @@ export async function onRequestGet(context) {
 
     if (!response.ok) {
         if (response.status === 404) {
-            return new Response(JSON.stringify({ error: "Google Sheet not found. Please verify the URL and ensure the sheet still exists." }), {
+            return new Response(JSON.stringify({ error: "Google Sheet not found. Please verify the URL and ensure the sheet still exists. (Status 404)" }), {
                 status: 404,
                 headers: { "Content-Type": "application/json" }
             });
         }
+        return new Response(JSON.stringify({ error: `Google Sheets returned an error: ${response.status} ${response.statusText}` }), {
+            status: response.status >= 400 && response.status < 600 ? response.status : 400,
+            headers: { "Content-Type": "application/json" }
+        });
     }
 
     return new Response(csvText, {
