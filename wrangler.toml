@@ -1,9 +1,0 @@
-name = "swynmatch"
-compatibility_date = "2024-03-20"
-pages_build_output_dir = "dist"
-
-[build]
-command = "npm run build"
-
-[functions]
-node_compat = true
