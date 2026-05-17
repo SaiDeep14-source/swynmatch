@@ -4,7 +4,7 @@ export async function onRequestPost(context: any) {
   if (request.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
-      headers: { "Content-Type": "application/json" }
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
     });
   }
 
@@ -12,7 +12,7 @@ export async function onRequestPost(context: any) {
     const key = env.GEMINI_API_KEY;
     if (!key) {
       return new Response(JSON.stringify({ 
-        error: "Deploy Error: Gemini API key is missing. Because you deployed outside of AI Studio, you must manually add the GEMINI_API_KEY to your hosting provider's Dashboard (Vercel/Cloudflare Settings -> Environment variables). AI Studio keys do not automatically sync to third-party hosts." 
+        error: "Deploy Error: Gemini API key is missing. Because you deployed outside of AI Studio, you must manually add the GEMINI_API_KEY to your hosting provider's Dashboard (Cloudflare Settings -> Environment variables). AI Studio keys do not automatically sync to third-party hosts." 
       }), {
         status: 400,
         headers: { 
@@ -59,7 +59,7 @@ export async function onRequestPost(context: any) {
       errorMsg = "Network error while connecting to Gemini API.";
     }
     return new Response(JSON.stringify({ error: errorMsg }), {
-      status: 400,
+      status: 500,
       headers: { 
         "Content-Type": "application/json",
         "Access-Control-Allow-Origin": "*"
