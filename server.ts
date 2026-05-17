@@ -117,76 +117,27 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
   }
 };
 
-// --- Bulletproof API Routes ---
-// Bypass all routers and middlewares to guarantee matching
-// Add OPTIONS handler for CORS preflight
-app.options(["/api/gemini/generateContent", "/api/gemini/generateContent/"], (req, res) => {
+// --- Configured API Routes ---
+const geminiRoutes = ["/api/gemini/generateContent", "/api/gemini/generateContent/"];
+
+app.options(geminiRoutes, (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.status(200).end();
 });
-app.post(["/api/gemini/generateContent", "/api/gemini/generateContent/"], handleGemini);
 
-app.get(["/api/proxy-sheet", "/api/proxy-sheet/"], async (req, res) => {
-  const sheetId = req.query.id as string;
-  const gid = req.query.gid as string;
-  if (!sheetId) return res.status(400).json({ error: "Missing sheet ID" });
+app.post(geminiRoutes, handleGemini);
 
-  try {
-    const url = `https://docs.google.com/spreadsheets/d/${sheetId.replace(/\\s+/g, '')}/export?format=csv${gid ? `&gid=${gid.replace(/\\s+/g, '')}` : ''}`;
-    console.info(`Proxying Sheet: ${url}`);
-    
-    const response = await axios.get(url, { responseType: 'text', timeout: 15000 });
-    const csvText = response.data;
-
-    // Check if it's HTML (indicating a 404/auth page)
-    if (typeof csvText === 'string' && csvText.trim().startsWith('<')) {
-       return res.status(401).json({ error: "Sheet not public (Anyone with link can view required)" });
-    }
-
-    console.info(`Successfully fetched sheet length: ${csvText.length}`);
-    res.send(csvText);
-  } catch (err: any) {
-    console.error(`[proxy-sheet] Error fetching sheet ${sheetId}. Message: ${err.message}`);
-    
-    if (err.response) {
-      console.error(`[proxy-sheet] upstream status: ${err.response.status}`);
-      // Explicitly handle Google Sheets 404 (Sheet not found or deleted)
-      if (err.response.status === 404) {
-        return res.status(404).json({ error: "Google Sheet not found. Please verify the URL and ensure the sheet still exists. (Status 404)" });
-      }
-      
-      const status = err.response.status || 500;
-      return res.status(status).json({ error: `Network error fetching sheet (Status: ${status})` });
-    }
-    
-    return res.status(500).json({ error: "Internal error checking sheet: " + err.message });
-  }
+const proxySheetRoutes = ["/api/proxy-sheet", "/api/proxy-sheet/"];
+app.options(proxySheetRoutes, (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.status(200).end();
 });
 
-const apiRouter = express.Router();
-
-
-apiRouter.get("/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
-    time: new Date().toISOString(),
-    env: {
-      node_env: process.env.NODE_ENV,
-      gemini: !!process.env.GEMINI_API_KEY
-    }
-  });
-});
-
-apiRouter.post("/gemini/generateContent", handleGemini);
-apiRouter.post("/gemini/generateContent/", handleGemini);
-
-// Add exact handlers to bypass router matching issues
-app.post("/api/gemini/generateContent", handleGemini);
-app.post("/api/gemini/generateContent/", handleGemini);
-
-apiRouter.get("/proxy-sheet", async (req, res) => {
+app.get(proxySheetRoutes, async (req, res) => {
   const sheetId = req.query.id as string;
   const gid = req.query.gid as string;
   if (!sheetId) return res.status(400).json({ error: "Missing sheet ID" });
@@ -195,10 +146,10 @@ apiRouter.get("/proxy-sheet", async (req, res) => {
     const url = `https://docs.google.com/spreadsheets/d/${sheetId.replace(/\s+/g, '')}/export?format=csv${gid ? `&gid=${gid.replace(/\s+/g, '')}` : ''}`;
     console.info(`Proxying Sheet: ${url}`);
     
+    // Set a modest timeout for upstream fetching
     const response = await axios.get(url, { responseType: 'text', timeout: 15000 });
     const csvText = response.data;
 
-    // Check if it's HTML (indicating a 404/auth page)
     if (typeof csvText === 'string' && csvText.trim().startsWith('<')) {
        return res.status(401).json({ error: "Sheet not public (Anyone with link can view required)" });
     }
@@ -210,11 +161,9 @@ apiRouter.get("/proxy-sheet", async (req, res) => {
     
     if (err.response) {
       console.error(`[proxy-sheet] upstream status: ${err.response.status}`);
-      // Explicitly handle Google Sheets 404 (Sheet not found or deleted)
       if (err.response.status === 404) {
         return res.status(404).json({ error: "Google Sheet not found. Please verify the URL and ensure the sheet still exists. (Status 404)" });
       }
-      
       const status = err.response.status || 500;
       return res.status(status).json({ error: `Network error fetching sheet (Status: ${status})` });
     }
@@ -223,19 +172,13 @@ apiRouter.get("/proxy-sheet", async (req, res) => {
   }
 });
 
-// Mount the router at both root and /api to be safe
-app.use("/api", apiRouter);
-app.use("/", (req, res, next) => {
-  const targetUrl = req.url;
-  
-  if (targetUrl.includes('/gemini/') || targetUrl.includes('/proxy-sheet') || targetUrl.includes('/health')) {
-    // We need to rewrite req.url to strip '/api' so apiRouter matches correctly
-    if (req.url.startsWith('/api/')) {
-        req.url = req.url.replace('/api', '');
-    }
-    return apiRouter(req, res, next);
-  }
-  next();
+app.get(["/api/health", "/api/health/"], (req, res) => {
+  res.json({ 
+    status: "ok", 
+    time: new Date().toISOString(),
+    routes: ["gemini", "proxy-sheet"],
+    gemini: !!process.env.GEMINI_API_KEY
+  });
 });
 
 // API 404 handler - MUST be before Vite/Static fallback
