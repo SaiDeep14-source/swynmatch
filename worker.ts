@@ -93,7 +93,11 @@ export default {
       }
     }
 
-    // Pass everything else through (typically handled by Cloudflare Pages/Assets before this if using pages)
+    // Pass everything else through to assets fallback for SPA
+    // If we reach here, it's not an API route. If env.ASSETS is bound, we can fetch index.html
+    if (env.ASSETS) {
+      return env.ASSETS.fetch(new Request(new URL("/", request.url), request));
+    }
     return new Response("Not found", { status: 404 });
   }
 };
