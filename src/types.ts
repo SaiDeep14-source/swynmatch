@@ -1,54 +1,31 @@
+export interface SheetSource {
+  id: string;
+  url: string;
+  lastSynced?: string;
+}
+
 export interface Expert {
   id: string;
   name: string;
   role: string;
-  bio: string;
-  experience: string[];
-  tags: string[];
-  achievements: string;
-  status?: 'active' | 'busy' | 'unavailable';
-  sourceSheet?: string;
-  sourceSheets?: string[];
-  sourceSheetIds?: string[];
-  metadata?: Record<string, any>;
-  matchDetails?: {
-    score: number;
-    reason: string;
-    gap: string;
-  };
-}
-
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: number;
-}
-
-export interface User {
-  email: string;
-  role: 'admin' | 'member';
-}
-
-export interface MatchAnalysis {
-  expertiseNeeded: string;
   industry: string;
-  problemStatement: string[];
-  stage: string;
-  seniority: string;
-  essentialSkills: string[];
-  keywords: string[];
+  experience: string;
+  email?: string;
+  notes?: string;
+  metadata?: Record<string, any>;
 }
 
-export interface MatchResponse {
-  analysis: MatchAnalysis;
-  matches: Expert[];
-}
-
-export interface InternalChatMessage {
+export interface MatchRecord {
   id: string;
-  senderEmail: string;
-  senderName: string;
-  content: string;
-  timestamp: number;
+  expertId: string;
+  expertName: string;
+  expertRole: string;
+  clientName: string;
+  clientIndustry: string;
+  clientLocation: string;
+  clientRequirements: string;
+  clientBudget: string;
+  clientPreferredRole: string;
+  clientContact: string;
+  createdAt: string;
 }
