@@ -27,7 +27,7 @@ export const generateGeminiContent = async (reqBody: any) => {
         
         let hint = "";
         if (textError.includes('Not Found') || res.status === 404) {
-            hint = " The proxy endpoint (/api/gemini/generateContent) is missing or not configured correctly in your deployment environment (Vercel, Cloudflare, etc). Please ensure your serverless functions are deployed properly.";
+            hint = " The proxy endpoint (/api/gemini/generateContent) is missing or not configured correctly.";
         }
         
         errorMessage = `API Error (${res.status}): The server returned an invalid response format.${hint} Please try opening the app in a new tab or incognito mode.`;

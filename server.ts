@@ -134,7 +134,7 @@ apiRouter.get("/health", (req, res) => {
 apiRouter.post("/gemini/generateContent", handleGemini);
 apiRouter.post("/gemini/generateContent/", handleGemini);
 
-// Add an exact handler to the base app to bypass any router weirdness in Vercel
+// Add exact handlers to bypass router matching issues
 app.post("/api/gemini/generateContent", handleGemini);
 app.post("/api/gemini/generateContent/", handleGemini);
 
@@ -178,9 +178,7 @@ apiRouter.get("/proxy-sheet", async (req, res) => {
 // Mount the router at both root and /api to be safe
 app.use("/api", apiRouter);
 app.use("/", (req, res, next) => {
-  // Determine the actual intended URL. Vercel sometimes rewrites req.url to the destination.
-  const vercelOriginalUrl = req.headers['x-now-route-matches'] || req.headers['x-vercel-id'] ? req.originalUrl : null;
-  const targetUrl = vercelOriginalUrl || req.url;
+  const targetUrl = req.url;
   
   if (targetUrl.includes('/gemini/') || targetUrl.includes('/proxy-sheet') || targetUrl.includes('/health')) {
     // We need to rewrite req.url to strip '/api' so apiRouter matches correctly
@@ -264,11 +262,6 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-if (!process.env.VERCEL) {
-  startServer().catch(err => {
-    console.error("Failed to start server:", err);
-  });
-}
-
-export default app;
-export { app };
+startServer().catch(err => {
+  console.error("Failed to start server:", err);
+});
