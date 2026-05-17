@@ -159,8 +159,12 @@ export const MatchingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         if (cvLink && typeof cvLink === 'string' && cvLink.startsWith('http')) {
            try {
               const res = await fetch(`/api/proxy-cv?url=${encodeURIComponent(cvLink)}`);
+              // Only load the text if successful and it's valid text
               if (res.ok) {
-                 cvText = await res.text();
+                 const text = await res.text();
+                 if (text && !text.includes('<!DOCTYPE html>')) {
+                   cvText = text;
+                 }
               }
            } catch (e) {
               console.warn("Failed to fetch CV for", e.name);
