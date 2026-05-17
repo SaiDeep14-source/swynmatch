@@ -1,21 +1,23 @@
 export async function onRequest(context: any) {
   const { request, env } = context;
   
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+
   if (request.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-      }
+      headers: corsHeaders
     });
   }
 
   if (request.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+    return new Response(JSON.stringify({ error: "Method not allowed. Ensure you send a POST request." }), {
+      status: 405, // Can stay 405, but we ensure proper CORS
+      headers: { "Content-Type": "application/json", ...corsHeaders }
     });
   }
 
@@ -23,12 +25,12 @@ export async function onRequest(context: any) {
     const key = env.GEMINI_API_KEY;
     if (!key) {
       return new Response(JSON.stringify({ 
-        error: "Deploy Error: Gemini API key is missing. Because you deployed using Cloudflare Pages, you must manually add the GEMINI_API_KEY to your Cloudflare Dashboard (Pages -> Settings -> Environment variables). AI Studio keys do not automatically sync to third-party hosts." 
+        error: "Deploy Error: Gemini API key is missing. Add GEMINI_API_KEY to your Cloudflare Dashboard (Pages -> Settings -> Environment variables)." 
       }), {
         status: 400,
         headers: { 
           "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*"
+          ...corsHeaders
         }
       });
     }
@@ -39,13 +41,24 @@ export async function onRequest(context: any) {
     if (!requestData.model) {
       requestData.model = "gemini-2.5-flash";
     }
+
+    // Convert new SDK format string `contents: "prompt"` into REST API payload `contents: [{parts: [{text: "prompt"}]}]`
+    let formattedContents = requestData.contents;
+    if (typeof formattedContents === 'string') {
+        formattedContents = [{ role: 'user', parts: [{ text: formattedContents }] }];
+    }
+    
+    const restPayload = {
+      ...requestData,
+      contents: formattedContents
+    };
     
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${requestData.model}:generateContent?key=${key}`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
-        body: JSON.stringify(requestData)
+        body: JSON.stringify(restPayload)
     });
 
     const data = await response.json();

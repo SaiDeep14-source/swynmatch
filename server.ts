@@ -119,6 +119,13 @@ const handleGemini = async (req: express.Request, res: express.Response) => {
 
 // --- Bulletproof API Routes ---
 // Bypass all routers and middlewares to guarantee matching
+// Add OPTIONS handler for CORS preflight
+app.options(["/api/gemini/generateContent", "/api/gemini/generateContent/"], (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.status(200).end();
+});
 app.post(["/api/gemini/generateContent", "/api/gemini/generateContent/"], handleGemini);
 
 app.get(["/api/proxy-sheet", "/api/proxy-sheet/"], async (req, res) => {
