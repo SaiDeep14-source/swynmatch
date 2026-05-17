@@ -149,17 +149,41 @@ export const MatchingProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       // PHASE 2: Candidate Ranking
       // Limit to top 40 experts to avoid payload size/token issues
-      const candidatePool = experts.slice(0, 40).map((e) => {
+      
+      const candidatePromises = experts.slice(0, 40).map(async (e) => {
+        // Look for CV/Resume link in metadata
+        const cvLinkKey = Object.keys(e.metadata || {}).find(k => k.toLowerCase().includes('upload your cv') || k.toLowerCase().includes('resume'));
+        const cvLink = cvLinkKey ? e.metadata![cvLinkKey] : null;
+        
+        let cvText = '';
+        if (cvLink && typeof cvLink === 'string' && cvLink.startsWith('http')) {
+           try {
+              const res = await fetch(`/api/proxy-cv?url=${encodeURIComponent(cvLink)}`);
+              if (res.ok) {
+                 cvText = await res.text();
+              }
+           } catch (e) {
+              console.warn("Failed to fetch CV for", e.name);
+           }
+        }
+        
         return {
           id: e.id,
           name: e.name,
           role: e.role,
           bio: e.bio?.substring(0, 500),
+          cvExtract: cvText ? cvText.substring(0, 1000) : undefined, // Include 1000 chars of CV context
           tags: e.tags?.slice(0, 5),
-          metadata: e.metadata ? { linkedin: !!e.metadata.linkedin } : {},
+          metadata: {
+            linkedin: !!e.metadata?.linkedin,
+            cv_link: cvLink || undefined,
+            ...e.metadata
+          },
           achievements: e.achievements?.slice(0, 3)
         };
       });
+      
+      const candidatePool = await Promise.all(candidatePromises);
 
       const rankPrompt = `
         You are a world-class expert scout. Match the following requirements to the best experts in our pool (showing first 40 available).

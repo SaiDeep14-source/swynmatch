@@ -98,6 +98,28 @@ app.get(["/api/proxy-sheet", "/api/proxy-sheet/"], async (req, res) => {
   }
 });
 
+// ====================== CV PROXY ======================
+app.get(["/api/proxy-cv", "/api/proxy-cv/"], async (req, res) => {
+  const url = req.query.url as string;
+  if (!url) return res.status(400).json({ error: "Missing url" });
+
+  try {
+    let targetUrl = url;
+    // Auto-convert Google Drive links to text export if it's a Document
+    if (targetUrl.includes('docs.google.com/document/d/')) {
+       const match = targetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+       if (match && match[1]) {
+           targetUrl = `https://docs.google.com/document/d/${match[1]}/export?format=txt`;
+       }
+    }
+    const response = await axios.get(targetUrl, { timeout: 10000, responseType: 'text' });
+    res.send(response.data.substring(0, 5000)); // Limit to 5000 chars to avoid token bombing
+  } catch (err: any) {
+    console.error("CV Fetch Error:", err.message);
+    res.status(500).json({ error: "Failed to fetch CV text" });
+  }
+});
+
 // Health Check
 app.get(["/api/health", "/api/health/"], (req, res) => {
   res.json({
