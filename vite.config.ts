@@ -19,8 +19,18 @@ export default defineConfig(({mode}) => {
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
+      // Do not modify — file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
+      // Proxy /api/* to the Express server (server.ts) during local Vite-only dev.
+      // This prevents 405 errors when the frontend calls /api/gemini/generateContent
+      // or /api/proxy-sheet while running `vite` without `tsx server.ts`.
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+        },
+      },
     },
   };
 });
