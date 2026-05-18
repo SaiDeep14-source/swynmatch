@@ -206,18 +206,17 @@ async function startServer() {
     }
   };
 
-  const apiRouter = express.Router();
-
   // API logging and authentication middleware
-  apiRouter.use(async (req, res, next) => {
+  const apiAuthMiddleware = async (req: any, res: any, next: any) => {
     try {
-      console.log(`[API ${req.method}] ${req.path}`);
+      console.log(`[API REQUEST] ${req.method} ${req.path}`);
       
-      // Public routes that don't need auth
+      // Public routes that don't need auth (check path relative to root because it's mounted on /api)
       if (
+        req.path === "/auth/login" ||
+        req.path === "/auth/register" ||
         req.path === "/health" ||
-        req.path === "/health/" ||
-        req.path.startsWith("/auth/")
+        req.path === "/health/"
       ) {
         return next();
       }
@@ -226,14 +225,16 @@ async function startServer() {
     } catch (err) {
       next(err);
     }
-  });
+  };
 
-  // API ROUTE: Health check
-  apiRouter.get(["/health", "/health/"], (req, res) => {
+  app.use("/api", apiAuthMiddleware);
+
+  // Health check
+  app.get(["/api/health", "/api/health/"], (req, res) => {
     res.json({ status: "ok" });
   });
 
-  apiRouter.get("/chat/history", (req: any, res) => {
+  app.get("/api/chat/history", async (req: any, res) => {
     const user = req.user.email;
     const userPrivates = privateMessages.filter((m: any) => m.user === user || m.recipient === user);
     res.json({
@@ -242,7 +243,7 @@ async function startServer() {
     });
   });
 
-  apiRouter.get("/users", async (req, res) => {
+  app.get("/api/users", async (req, res) => {
     try {
       const users = await readUsers();
       res.json(users.map((u: any) => ({ email: u.email })));
@@ -252,7 +253,7 @@ async function startServer() {
   });
 
   // AUTH ROUTES
-  apiRouter.post("/auth/register", async (req, res) => {
+  app.post("/api/auth/register", async (req, res) => {
     try {
       const { email, password } = req.body;
       if (!email || !password) {
@@ -286,7 +287,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/auth/login", async (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     try {
       const { email, password } = req.body;
       if (!email || !password) {
@@ -314,7 +315,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.get("/matches/history", async (req, res) => {
+  app.get("/api/matches/history", async (req, res) => {
     try {
       res.json(await readMatchHistory());
     } catch (err) {
@@ -323,7 +324,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/matches/history", async (req, res) => {
+  app.post("/api/matches/history", async (req, res) => {
     try {
       const matchRecord = req.body;
       const history = await readMatchHistory();
@@ -341,7 +342,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.get("/experts", async (req, res) => {
+  app.get("/api/experts", async (req, res) => {
     try {
       const experts = await readExperts();
       res.json(experts);
@@ -351,7 +352,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/experts", async (req, res) => {
+  app.post("/api/experts", async (req, res) => {
     try {
       const expert = req.body;
       const experts = await readExperts();
@@ -364,7 +365,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.delete("/experts/:id", async (req, res) => {
+  app.delete("/api/experts/:id", async (req, res) => {
     try {
       const id = req.params.id;
       let experts = await readExperts();
@@ -377,7 +378,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/experts/sync", async (req, res) => {
+  app.post("/api/experts/sync", async (req, res) => {
     try {
       const newExperts = req.body.experts;
       if (!Array.isArray(newExperts)) {
@@ -393,7 +394,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.get("/sources", async (req, res) => {
+  app.get("/api/sources", async (req, res) => {
     try {
       res.json(await readSources());
     } catch (err: any) {
@@ -402,7 +403,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/sources", async (req, res) => {
+  app.post("/api/sources", async (req, res) => {
     try {
       const { url } = req.body;
       const sources = await readSources();
@@ -423,7 +424,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.delete("/sources/:id", async (req, res) => {
+  app.delete("/api/sources/:id", async (req, res) => {
     try {
       let sources = await readSources();
       sources = sources.filter((s: any) => s.id !== req.params.id);
@@ -435,7 +436,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/sources/sync", async (req, res) => {
+  app.post("/api/sources/sync", async (req, res) => {
     try {
       const { sourceId } = req.body;
       const sources = await readSources();
@@ -580,7 +581,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.get("/proxy-cv", async (req, res) => {
+  app.get("/api/proxy-cv", async (req, res) => {
     const url = req.query.url as string;
     if (!url) return res.status(400).json({ error: "Missing url" });
 
@@ -605,7 +606,7 @@ async function startServer() {
     }
   });
 
-  apiRouter.post("/match", async (req, res) => {
+  app.post("/api/match", async (req, res) => {
     try {
       const { query } = req.body;
       if (!query) {
@@ -619,7 +620,15 @@ async function startServer() {
         throw new Error("GEMINI_API_KEY is not set.");
       }
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+
       const simplifiedExperts = experts.map((e: any) => ({
         id: e.id,
         role: e.role,
@@ -627,7 +636,7 @@ async function startServer() {
         experience: e.experience,
         notes: e.notes ? e.notes.substring(0, 500) : "",
         metadata: e.metadata ? e.metadata : undefined, 
-      })).slice(0, 200); // Limit to top 200 for context limits if directory is huge
+      })).slice(0, 200);
 
       const prompt = `You are a matching engine for finding the best professional experts based on a user's typed requirement.
 You have a directory of experts (provided as JSON). Look at the user's requirement and determine the top 5 best matching experts from the provided list.
@@ -635,26 +644,27 @@ For each match, provide a match percentage (0 to 100), a reason why they are a g
 
 User Requirement: "${query}"
 
-Experts Data:
-${JSON.stringify(simplifiedExperts, null, 2)}
+Experts JSON: ${JSON.stringify(simplifiedExperts)}
 
-Return a raw JSON array of objects with strictly the following format:
+Return only a JSON array of matches in the following format:
 [
   {
-    "id": "expert_id_here",
+    "id": "expert-uuid",
     "matchPercentage": 95,
-    "matchReason": "why they fit",
-    "gaps": "any missing skills or experience"
-  }
+    "matchReason": "Brief explanation why this expert matches",
+    "gaps": "Briefly note any areas where they might not be a perfect fit"
+  },
+  ... up to 5 best matches
 ]
+
 Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json.`;
 
-      const aiResponse = await ai.models.generateContent({
+      const result = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: prompt,
+        contents: prompt
       });
-
-      const responseText = aiResponse.text || "[]";
+      const responseText = result.text || "[]";
+      
       const cleanText = responseText
         .replace(/```json/g, "")
         .replace(/```/g, "")
@@ -694,8 +704,8 @@ Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json
     }
   });
 
-  // Catch-all for API Router to prevent falling through to HTML fallback
-  apiRouter.all("*", (req, res) => {
+  // Catch-all for API to prevent falling through to HTML fallback
+  app.all("/api/*", (req, res) => {
     console.warn(`Unmatched API route: ${req.method} ${req.originalUrl}`);
     res.status(404).json({ 
       error: "API route not found", 
@@ -703,12 +713,9 @@ Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json
     });
   });
 
-  // Register the API router
-  app.use("/api", apiRouter);
-
   // Global Error Handler for both API and other routes
   app.use((err: any, req: any, res: any, next: any) => {
-    console.error("Global Error Handler:", err);
+    console.error("Global Error Handler reached:", err);
     if (req.path.startsWith("/api/")) {
       return res.status(err.status || 500).json({
         error: "Internal Server Error",

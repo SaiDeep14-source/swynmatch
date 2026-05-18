@@ -38,13 +38,22 @@ export default function ExpertsDirectory() {
     try {
       const res = await authFetch('/api/experts');
       if (res.ok) {
-        const data = await res.json();
-        setExperts(data);
+        const text = await res.text();
+        try {
+          const data = JSON.parse(text);
+          setExperts(data);
+          setError(null);
+        } catch (parseErr) {
+          console.error('Failed to parse experts JSON:', text.substring(0, 100));
+          setError('Server returned invalid data format');
+        }
       } else {
-        setError('Failed to fetch experts from server');
+        const errorText = await res.text().catch(() => 'No error details');
+        setError(`Failed to fetch experts: ${res.status} ${res.statusText}`);
+        console.error('API Error:', res.status, errorText);
       }
-    } catch (err) {
-      setError('Connection error');
+    } catch (err: any) {
+      setError(`Connection error: ${err.message || 'Unknown'}`);
     } finally {
       setLoading(false);
     }
