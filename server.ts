@@ -206,18 +206,18 @@ async function startServer() {
     }
   };
 
+  // API Router setup
+  const apiRouter = express.Router();
+
+  // Public routes on the router (relative to /api)
+  const publicApiPaths = ["/auth/login", "/auth/register", "/health", "/health/"];
+
   // API logging and authentication middleware
-  const apiAuthMiddleware = async (req: any, res: any, next: any) => {
+  apiRouter.use(async (req: any, res: any, next: any) => {
     try {
       console.log(`[API REQUEST] ${req.method} ${req.path}`);
       
-      // Public routes that don't need auth (check path relative to root because it's mounted on /api)
-      if (
-        req.path === "/auth/login" ||
-        req.path === "/auth/register" ||
-        req.path === "/health" ||
-        req.path === "/health/"
-      ) {
+      if (publicApiPaths.includes(req.path)) {
         return next();
       }
 
@@ -225,16 +225,14 @@ async function startServer() {
     } catch (err) {
       next(err);
     }
-  };
-
-  app.use("/api", apiAuthMiddleware);
+  });
 
   // Health check
-  app.get(["/api/health", "/api/health/"], (req, res) => {
+  apiRouter.get(["/health", "/health/"], (req, res) => {
     res.json({ status: "ok" });
   });
 
-  app.get("/api/chat/history", async (req: any, res) => {
+  apiRouter.get("/chat/history", async (req: any, res) => {
     const user = req.user.email;
     const userPrivates = privateMessages.filter((m: any) => m.user === user || m.recipient === user);
     res.json({
@@ -243,7 +241,7 @@ async function startServer() {
     });
   });
 
-  app.get("/api/users", async (req, res) => {
+  apiRouter.get("/users", async (req, res) => {
     try {
       const users = await readUsers();
       res.json(users.map((u: any) => ({ email: u.email })));
@@ -253,7 +251,7 @@ async function startServer() {
   });
 
   // AUTH ROUTES
-  app.post("/api/auth/register", async (req, res) => {
+  apiRouter.post("/auth/register", async (req, res) => {
     try {
       const { email, password } = req.body;
       if (!email || !password) {
@@ -287,7 +285,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  apiRouter.post("/auth/login", async (req, res) => {
     try {
       const { email, password } = req.body;
       if (!email || !password) {
@@ -315,7 +313,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/matches/history", async (req, res) => {
+  apiRouter.get("/matches/history", async (req, res) => {
     try {
       res.json(await readMatchHistory());
     } catch (err) {
@@ -324,7 +322,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/matches/history", async (req, res) => {
+  apiRouter.post("/matches/history", async (req, res) => {
     try {
       const matchRecord = req.body;
       const history = await readMatchHistory();
@@ -342,7 +340,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/experts", async (req, res) => {
+  apiRouter.get("/experts", async (req, res) => {
     try {
       const experts = await readExperts();
       res.json(experts);
@@ -352,7 +350,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/experts", async (req, res) => {
+  apiRouter.post("/experts", async (req, res) => {
     try {
       const expert = req.body;
       const experts = await readExperts();
@@ -365,7 +363,7 @@ async function startServer() {
     }
   });
 
-  app.delete("/api/experts/:id", async (req, res) => {
+  apiRouter.delete("/experts/:id", async (req, res) => {
     try {
       const id = req.params.id;
       let experts = await readExperts();
@@ -378,7 +376,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/experts/sync", async (req, res) => {
+  apiRouter.post("/experts/sync", async (req, res) => {
     try {
       const newExperts = req.body.experts;
       if (!Array.isArray(newExperts)) {
@@ -394,7 +392,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/sources", async (req, res) => {
+  apiRouter.get("/sources", async (req, res) => {
     try {
       res.json(await readSources());
     } catch (err: any) {
@@ -403,7 +401,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/sources", async (req, res) => {
+  apiRouter.post("/sources", async (req, res) => {
     try {
       const { url } = req.body;
       const sources = await readSources();
@@ -424,7 +422,7 @@ async function startServer() {
     }
   });
 
-  app.delete("/api/sources/:id", async (req, res) => {
+  apiRouter.delete("/sources/:id", async (req, res) => {
     try {
       let sources = await readSources();
       sources = sources.filter((s: any) => s.id !== req.params.id);
@@ -436,7 +434,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/sources/sync", async (req, res) => {
+  apiRouter.post("/sources/sync", async (req, res) => {
     try {
       const { sourceId } = req.body;
       const sources = await readSources();
@@ -483,7 +481,7 @@ async function startServer() {
               .map((row: any) => {
                 const metadata: Record<string, any> = {};
                 for (const key of Object.keys(row)) {
-                  if (key && !knownKeys.includes(key.toLowerCase()) && row[key] !== "") {
+                   if (key && !knownKeys.includes(key.toLowerCase()) && row[key] !== "") {
                     metadata[key] = row[key];
                   }
                 }
@@ -581,7 +579,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/proxy-cv", async (req, res) => {
+  apiRouter.get("/proxy-cv", async (req, res) => {
     const url = req.query.url as string;
     if (!url) return res.status(400).json({ error: "Missing url" });
 
@@ -606,7 +604,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/match", async (req, res) => {
+  apiRouter.post("/match", async (req, res) => {
     try {
       const { query } = req.body;
       if (!query) {
@@ -659,11 +657,11 @@ Return only a JSON array of matches in the following format:
 
 Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json.`;
 
-      const result = await ai.models.generateContent({
+      const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: prompt
       });
-      const responseText = result.text || "[]";
+      const responseText = response.text || "[]";
       
       const cleanText = responseText
         .replace(/```json/g, "")
@@ -705,7 +703,7 @@ Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json
   });
 
   // Catch-all for API to prevent falling through to HTML fallback
-  app.all("/api/*", (req, res) => {
+  apiRouter.all("*", (req, res) => {
     console.warn(`Unmatched API route: ${req.method} ${req.originalUrl}`);
     res.status(404).json({ 
       error: "API route not found", 
@@ -713,14 +711,18 @@ Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json
     });
   });
 
-  // Global Error Handler for both API and other routes
+  // Mount the API Router
+  app.use("/api", apiRouter);
+
+  // Global Error Handler
   app.use((err: any, req: any, res: any, next: any) => {
     console.error("Global Error Handler reached:", err);
-    if (req.path.startsWith("/api/")) {
+    // Use originalUrl because req.path might be relative to the mount point
+    if (req.originalUrl.startsWith("/api/")) {
       return res.status(err.status || 500).json({
         error: "Internal Server Error",
         message: err.message,
-        path: req.path
+        path: req.originalUrl
       });
     }
     next(err);
