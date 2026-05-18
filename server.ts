@@ -169,12 +169,6 @@ async function startServer() {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
-  // API Router setup (defined above, but mounted here)
-  const apiRouter = express.Router();
-  
-  // Mount API router early
-  app.use("/api", apiRouter);
-
   // JWT Middleware setup using Firebase Admin
   const authenticateToken = async (req: any, res: any, next: any) => {
     const authHeader = req.headers["authorization"];
@@ -212,6 +206,9 @@ async function startServer() {
     }
   };
 
+  // API Router setup
+  const apiRouter = express.Router();
+
   // Public routes on the router (relative to /api)
   const publicApiPaths = ["/auth/login", "/auth/register", "/health", "/health/"];
 
@@ -225,7 +222,10 @@ async function startServer() {
 
       console.log(`[API REQUEST] ${req.method} ${req.path}`);
       
-      if (publicApiPaths.includes(req.path)) {
+      // Strict matching for public paths
+      const isPublic = publicApiPaths.includes(req.path);
+      
+      if (isPublic) {
         return next();
       }
 
@@ -711,6 +711,9 @@ Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json
     }
   });
 
+  // Last route added, now mount the router
+  app.use("/api", apiRouter);
+
   // Catch-all for API to prevent falling through to HTML fallback
   apiRouter.all("*", (req, res) => {
     console.warn(`Unmatched API route: ${req.method} ${req.originalUrl}`);
@@ -720,11 +723,11 @@ Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json
     });
   });
 
-  // JWT Middleware setup using Firebase Admin
+  // Global Error Handler
   app.use((err: any, req: any, res: any, next: any) => {
     console.error("Global Error Handler reached:", err);
-    // Use originalUrl because req.path might be relative to the mount point
-    if (req.originalUrl.startsWith("/api/")) {
+    // Use originalUrl and check for /api prefix
+    if (req.originalUrl.startsWith("/api")) {
       return res.status(err.status || 500).json({
         error: "Internal Server Error",
         message: err.message,
