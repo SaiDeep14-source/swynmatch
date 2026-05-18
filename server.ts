@@ -169,6 +169,12 @@ async function startServer() {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
+  // API Router setup (defined above, but mounted here)
+  const apiRouter = express.Router();
+  
+  // Mount API router early
+  app.use("/api", apiRouter);
+
   // JWT Middleware setup using Firebase Admin
   const authenticateToken = async (req: any, res: any, next: any) => {
     const authHeader = req.headers["authorization"];
@@ -206,15 +212,17 @@ async function startServer() {
     }
   };
 
-  // API Router setup
-  const apiRouter = express.Router();
-
   // Public routes on the router (relative to /api)
   const publicApiPaths = ["/auth/login", "/auth/register", "/health", "/health/"];
 
   // API logging and authentication middleware
   apiRouter.use(async (req: any, res: any, next: any) => {
     try {
+      // Handle OPTIONS preflight requests skip auth
+      if (req.method === 'OPTIONS') {
+        return next();
+      }
+
       console.log(`[API REQUEST] ${req.method} ${req.path}`);
       
       if (publicApiPaths.includes(req.path)) {
@@ -223,6 +231,7 @@ async function startServer() {
 
       await authenticateToken(req, res, next);
     } catch (err) {
+      console.error(`API Auth Middleware Error on ${req.path}:`, err);
       next(err);
     }
   });
@@ -711,10 +720,7 @@ Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json
     });
   });
 
-  // Mount the API Router
-  app.use("/api", apiRouter);
-
-  // Global Error Handler
+  // JWT Middleware setup using Firebase Admin
   app.use((err: any, req: any, res: any, next: any) => {
     console.error("Global Error Handler reached:", err);
     // Use originalUrl because req.path might be relative to the mount point
@@ -734,6 +740,13 @@ Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
+    });
+    // Add logging middleware before Vite to see what reaches it
+    app.use((req, res, next) => {
+      if (req.path.startsWith('/api')) {
+        console.warn(`API request reached Vite fallback: ${req.method} ${req.path}`);
+      }
+      next();
     });
     app.use(vite.middlewares);
   } else {
