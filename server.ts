@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import dotenv from "dotenv";
 dotenv.config();
 import path from "path";
@@ -164,6 +165,7 @@ async function startServer() {
     });
   });
 
+  app.use(cors());
   app.use(express.json());
 
   // JWT Middleware setup using Firebase Admin
@@ -183,6 +185,7 @@ async function startServer() {
   };
 
   app.use("/api", (req, res, next) => {
+    console.log("API Request:", req.method, req.originalUrl, req.path);
     if (
       req.path.startsWith("/auth/") ||
       req.path === "/health" ||
