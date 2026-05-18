@@ -120,7 +120,7 @@ async function writeMatchHistory(history: any[]) {
 }
 
 async function startServer() {
-  const app = express();
+  app.use(cors({   origin: '*',   credentials: true }));
   const PORT = 3000;
   const server = http.createServer(app);
   const io = new SocketIOServer(server, { cors: { origin: "*" } });
