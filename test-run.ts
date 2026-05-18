@@ -1,24 +1,26 @@
 import http from 'http';
+import express from 'express';
 
-const req = http.request({
-  hostname: 'localhost',
-  port: 3000,
-  path: '/api/sources',
-  method: 'OPTIONS',
-  headers: {}
-}, (res) => {
-  console.log(`STATUS: ${res.statusCode}`);
-  console.log(`HEADERS: ${JSON.stringify(res.headers)}`);
-  res.setEncoding('utf8');
-  res.on('data', (chunk) => {
-    console.log(`BODY: ${chunk}`);
+const app = express();
+
+app.get('/test', (req:any, res:any) => res.json({ok: true}));
+
+app.listen(3003, () => console.log('started'));
+
+setTimeout(() => {
+  const req = http.request({
+    hostname: 'localhost',
+    port: 3003,
+    path: '/test',
+    method: 'OPTIONS',
+  }, (res) => {
+    console.log(`STATUS: ${res.statusCode}`);
+    let body = '';
+    res.on('data', (chunk) => body += chunk);
+    res.on('end', () => console.log('BODY:', body.substring(0, 50)));
+    process.exit(0);
   });
-});
-
-req.on('error', (e) => {
-  console.error(`problem with request: ${e.message}`);
-});
-
-req.write(JSON.stringify({ url: "test"}));
-req.end();
+  
+  req.end();
+}, 500);
 
