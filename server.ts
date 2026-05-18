@@ -1,4 +1,6 @@
 import express from "express";
+import dotenv from "dotenv";
+dotenv.config();
 import path from "path";
 import axios from "axios";
 import { promises as fs } from "fs";
@@ -13,15 +15,24 @@ import admin from "firebase-admin";
 
 // Initialize Firebase Admin SDK
 try {
-  const firebaseConfig = JSON.parse(fsSync.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf-8"));
+  let credential;
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    credential = admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT));
+  }
+  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID;
   admin.initializeApp({
-    projectId: firebaseConfig.projectId
+    credential,
+    projectId: projectId
   });
 } catch (e: any) {
-  console.warn("Failed to initialize Firebase Admin:", e.message);
-  // Fallback to ADC if available or mock
+  console.warn("Failed to initialize Firebase Admin with config:", e.message);
+  // Fallback to ADC if available
   if (!admin.apps || admin.apps.length === 0) {
-     admin.initializeApp();
+     try {
+       admin.initializeApp();
+     } catch(err) {
+       console.warn("ADC fallback failed.");
+     }
   }
 }
 
