@@ -2,12 +2,28 @@ import express from "express";
 import path from "path";
 import axios from "axios";
 import { promises as fs } from "fs";
+import fsSync from "fs";
 import Papa from "papaparse";
 import { v4 as uuidv4 } from "uuid";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import http from "http";
 import { Server as SocketIOServer } from "socket.io";
+import admin from "firebase-admin";
+
+// Initialize Firebase Admin SDK
+try {
+  const firebaseConfig = JSON.parse(fsSync.readFileSync(path.join(process.cwd(), "firebase-applet-config.json"), "utf-8"));
+  admin.initializeApp({
+    projectId: firebaseConfig.projectId
+  });
+} catch (e: any) {
+  console.warn("Failed to initialize Firebase Admin:", e.message);
+  // Fallback to ADC if available or mock
+  if (!admin.apps || admin.apps.length === 0) {
+     admin.initializeApp();
+  }
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || "default_super_secret_key_123!";
 const EXPERTS_FILE = path.join(process.cwd(), "experts.json");
@@ -139,17 +155,20 @@ async function startServer() {
 
   app.use(express.json());
 
-  // JWT Middleware setup
-  const authenticateToken = (req: any, res: any, next: any) => {
+  // JWT Middleware setup using Firebase Admin
+  const authenticateToken = async (req: any, res: any, next: any) => {
     const authHeader = req.headers["authorization"];
     const token = authHeader && authHeader.split(" ")[1];
     if (!token) return res.status(401).json({ error: "Unauthorized" });
 
-    jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
-      if (err) return res.status(403).json({ error: "Forbidden" });
-      req.user = user;
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      req.user = decodedToken;
       next();
-    });
+    } catch (err: any) {
+      console.error("Firebase auth verification failed:", err.message);
+      return res.status(403).json({ error: "Forbidden" });
+    }
   };
 
   app.use("/api", (req, res, next) => {

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Briefcase, Lock, Mail, ArrowRight, UserPlus, LogIn } from 'lucide-react';
 import SwynLogo from './SwynLogo';
+import { auth } from '../lib/firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 
 interface AuthProps {
   onLogin: (token: string, email: string) => void;
@@ -21,28 +23,17 @@ export default function Auth({ onLogin }: AuthProps) {
     const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
 
     try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Authentication failed');
-      }
-
       if (isLogin) {
-        onLogin(data.token, data.email);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const token = await userCredential.user.getIdToken();
+        onLogin(token, userCredential.user.email || email);
       } else {
-        // Automatically switch to login or auto-login
-        setIsLogin(true);
-        setError("Registration successful! Please log in.");
-        setTimeout(() => setError(null), 3000); // Clear success message after 3 seconds
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const token = await userCredential.user.getIdToken();
+        onLogin(token, userCredential.user.email || email);
       }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Authentication failed');
     } finally {
       setIsLoading(false);
     }
