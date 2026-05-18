@@ -173,35 +173,67 @@ async function startServer() {
   const authenticateToken = async (req: any, res: any, next: any) => {
     const authHeader = req.headers["authorization"];
     const token = authHeader && authHeader.split(" ")[1];
-    if (!token) return res.status(401).json({ error: "Unauthorized" });
+    
+    if (!token) {
+      console.warn(`Unauthorized request to ${req.path}: No token provided`);
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
     try {
+      // Ensure admin is initialized
+      if (!admin.apps.length) {
+        throw new Error("Firebase Admin not initialized");
+      }
       const decodedToken = await admin.auth().verifyIdToken(token);
       req.user = decodedToken;
       next();
     } catch (err: any) {
-      console.error("Firebase auth verification failed:", err.message);
-      // More detailed logging for expired tokens
+      console.error(`Firebase auth verification failed for ${req.path}:`, err.message);
+      
       if (err.code === 'auth/id-token-expired') {
-        console.warn(`Token expired for request: ${req.method} ${req.path}`);
+        return res.status(403).json({ 
+          error: "Forbidden", 
+          message: "Token expired", 
+          code: 'auth/id-token-expired' 
+        });
       }
-      return res.status(403).json({ error: "Forbidden", message: err.message, code: err.code });
+      
+      return res.status(403).json({ 
+        error: "Forbidden", 
+        message: err.message, 
+        code: err.code || 'auth/invalid-token' 
+      });
     }
   };
 
-  app.use("/api", async (req, res, next) => {
-    console.log("API Request:", req.method, req.originalUrl, req.path);
-    if (
-      req.path.startsWith("/auth/") ||
-      req.path === "/health" ||
-      req.path === "/health/"
-    ) {
-      return next();
+  const apiRouter = express.Router();
+
+  // API logging and authentication middleware
+  apiRouter.use(async (req, res, next) => {
+    try {
+      console.log(`[API ${req.method}] ${req.path}`);
+      
+      // Public routes that don't need auth
+      if (
+        req.path === "/health" ||
+        req.path === "/health/" ||
+        req.path.startsWith("/auth/")
+      ) {
+        return next();
+      }
+
+      await authenticateToken(req, res, next);
+    } catch (err) {
+      next(err);
     }
-    await authenticateToken(req, res, next);
   });
 
-  app.get("/api/chat/history", authenticateToken, (req: any, res) => {
+  // API ROUTE: Health check
+  apiRouter.get(["/health", "/health/"], (req, res) => {
+    res.json({ status: "ok" });
+  });
+
+  apiRouter.get("/chat/history", (req: any, res) => {
     const user = req.user.email;
     const userPrivates = privateMessages.filter((m: any) => m.user === user || m.recipient === user);
     res.json({
@@ -210,7 +242,7 @@ async function startServer() {
     });
   });
 
-  app.get("/api/users", authenticateToken, async (req, res) => {
+  apiRouter.get("/users", async (req, res) => {
     try {
       const users = await readUsers();
       res.json(users.map((u: any) => ({ email: u.email })));
@@ -220,13 +252,11 @@ async function startServer() {
   });
 
   // AUTH ROUTES
-  app.post("/api/auth/register", async (req, res) => {
+  apiRouter.post("/auth/register", async (req, res) => {
     try {
       const { email, password } = req.body;
       if (!email || !password) {
-        return res
-          .status(400)
-          .json({ error: "Email and password are required" });
+        return res.status(400).json({ error: "Email and password are required" });
       }
       
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -256,13 +286,11 @@ async function startServer() {
     }
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  apiRouter.post("/auth/login", async (req, res) => {
     try {
       const { email, password } = req.body;
       if (!email || !password) {
-        return res
-          .status(400)
-          .json({ error: "Email and password are required" });
+        return res.status(400).json({ error: "Email and password are required" });
       }
       const users = await readUsers();
       const user = users.find((u: any) => u.email === email);
@@ -286,7 +314,7 @@ async function startServer() {
     }
   });
 
-  app.get("/api/matches/history", async (req, res) => {
+  apiRouter.get("/matches/history", async (req, res) => {
     try {
       res.json(await readMatchHistory());
     } catch (err) {
@@ -295,7 +323,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/matches/history", async (req, res) => {
+  apiRouter.post("/matches/history", async (req, res) => {
     try {
       const matchRecord = req.body;
       const history = await readMatchHistory();
@@ -313,8 +341,7 @@ async function startServer() {
     }
   });
 
-  // API ROUTE: Get all experts
-  app.get("/api/experts", async (req, res) => {
+  apiRouter.get("/experts", async (req, res) => {
     try {
       const experts = await readExperts();
       res.json(experts);
@@ -324,8 +351,7 @@ async function startServer() {
     }
   });
 
-  // API ROUTE: Add a new expert manually
-  app.post("/api/experts", async (req, res) => {
+  apiRouter.post("/experts", async (req, res) => {
     try {
       const expert = req.body;
       const experts = await readExperts();
@@ -338,8 +364,7 @@ async function startServer() {
     }
   });
 
-  // API ROUTE: Delete an expert
-  app.delete("/api/experts/:id", async (req, res) => {
+  apiRouter.delete("/experts/:id", async (req, res) => {
     try {
       const id = req.params.id;
       let experts = await readExperts();
@@ -352,17 +377,11 @@ async function startServer() {
     }
   });
 
-  // API ROUTE: Sync multiple experts (overwrite or merge)
-  app.post("/api/experts/sync", async (req, res) => {
+  apiRouter.post("/experts/sync", async (req, res) => {
     try {
-      // For simplicity, we will just completely overwrite with the uploaded parsed data
-      // Or we can merge. Let's overwrite / append if we want.
-      // E.g., user is syncing a full sheet. Let's do a complete overwrite for clear sync logic.
       const newExperts = req.body.experts;
       if (!Array.isArray(newExperts)) {
-        return res
-          .status(400)
-          .json({ error: "Missing or invalid experts array" });
+        return res.status(400).json({ error: "Missing or invalid experts array" });
       }
       const existingExperts = await readExperts();
       const updatedExperts = [...existingExperts, ...newExperts];
@@ -374,8 +393,7 @@ async function startServer() {
     }
   });
 
-  // API ROUTE: Get all sources
-  app.get("/api/sources", async (req, res) => {
+  apiRouter.get("/sources", async (req, res) => {
     try {
       res.json(await readSources());
     } catch (err: any) {
@@ -384,8 +402,7 @@ async function startServer() {
     }
   });
 
-  // API ROUTE: Add a source
-  app.post("/api/sources", async (req, res) => {
+  apiRouter.post("/sources", async (req, res) => {
     try {
       const { url } = req.body;
       const sources = await readSources();
@@ -399,9 +416,6 @@ async function startServer() {
       };
       sources.push(newSource);
       await writeSources(sources);
-
-      // Attempt to immediately trigger a sync for it
-      // Let the frontend orchestrate it using /api/sources/sync
       res.json(newSource);
     } catch (err: any) {
       console.error(err);
@@ -409,8 +423,7 @@ async function startServer() {
     }
   });
 
-  // API ROUTE: Delete a source
-  app.delete("/api/sources/:id", async (req, res) => {
+  apiRouter.delete("/sources/:id", async (req, res) => {
     try {
       let sources = await readSources();
       sources = sources.filter((s: any) => s.id !== req.params.id);
@@ -422,8 +435,7 @@ async function startServer() {
     }
   });
 
-  // API ROUTE: Sync a specific source or all sources
-  app.post("/api/sources/sync", async (req, res) => {
+  apiRouter.post("/sources/sync", async (req, res) => {
     try {
       const { sourceId } = req.body;
       const sources = await readSources();
@@ -447,7 +459,7 @@ async function startServer() {
             console.log(`Syncing sheet: ${link}`);
             const response = await axios.get(exportUrl, {
               responseType: "text",
-              timeout: 30000, // 30 second timeout
+              timeout: 30000,
             });
             const csvData = response.data;
 
@@ -557,7 +569,6 @@ async function startServer() {
       await writeExperts(updatedExperts);
       await writeSources(sources);
 
-      console.log(`Sync completed. Total records added/updated: ${allExperts.length}`);
       res.json({ 
         success: true, 
         count: allExperts.length,
@@ -569,19 +580,12 @@ async function startServer() {
     }
   });
 
-  // API ROUTE: Health check
-  app.get(["/api/health", "/api/health/"], (req, res) => {
-    res.json({ status: "ok" });
-  });
-
-  // API ROUTE: Proxy CV
-  app.get(["/api/proxy-cv", "/api/proxy-cv/"], async (req, res) => {
+  apiRouter.get("/proxy-cv", async (req, res) => {
     const url = req.query.url as string;
     if (!url) return res.status(400).json({ error: "Missing url" });
 
     try {
       let targetUrl = url;
-      // Auto-convert Google Drive links to text export if it's a Document
       if (targetUrl.includes("docs.google.com/document/d/")) {
         const match = targetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
         if (match && match[1]) {
@@ -592,8 +596,7 @@ async function startServer() {
         timeout: 10000,
         responseType: "text",
       });
-      const text = response.data.substring(0, 5000); // Limit to 5000 chars
-
+      const text = response.data.substring(0, 5000);
       res.setHeader("Content-Type", "text/plain");
       res.send(text);
     } catch (err: any) {
@@ -602,8 +605,7 @@ async function startServer() {
     }
   });
 
-  // API ROUTE: Match query using GenAI
-  app.post("/api/match", async (req, res) => {
+  apiRouter.post("/match", async (req, res) => {
     try {
       const { query } = req.body;
       if (!query) {
@@ -611,17 +613,13 @@ async function startServer() {
       }
 
       const experts = await readExperts();
-
-      // Try to load Gemini model
       const { GoogleGenAI } = await import("@google/genai");
 
       if (!process.env.GEMINI_API_KEY) {
-        // Fallback if no API key is provided
         throw new Error("GEMINI_API_KEY is not set.");
       }
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      // We will only send essential data to Gemini to avoid exceeding context
       const simplifiedExperts = experts.map((e: any) => ({
         id: e.id,
         role: e.role,
@@ -629,7 +627,7 @@ async function startServer() {
         experience: e.experience,
         notes: e.notes ? e.notes.substring(0, 500) : "",
         metadata: e.metadata ? e.metadata : undefined, 
-      }));
+      })).slice(0, 200); // Limit to top 200 for context limits if directory is huge
 
       const prompt = `You are a matching engine for finding the best professional experts based on a user's typed requirement.
 You have a directory of experts (provided as JSON). Look at the user's requirement and determine the top 5 best matching experts from the provided list.
@@ -657,7 +655,6 @@ Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json
       });
 
       const responseText = aiResponse.text || "[]";
-      // Handle potential markdown formatting from AI
       const cleanText = responseText
         .replace(/```json/g, "")
         .replace(/```/g, "")
@@ -668,11 +665,9 @@ Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json
         parsedMatches = JSON.parse(cleanText);
       } catch (parseErr) {
         console.error("AI returned malformed JSON:", cleanText);
-        // Fallback dummy
         parsedMatches = [];
       }
 
-      // Populate full details for matches
       const finalMatches = parsedMatches
         .map((m: any) => {
           const expertData = experts.find((e: any) => e.id === m.id);
@@ -697,6 +692,31 @@ Return ONLY the raw JSON array. DO NOT wrap with markdown blocks like \`\`\`json
       }
       res.status(500).json({ error: "Failed to perform matching" });
     }
+  });
+
+  // Catch-all for API Router to prevent falling through to HTML fallback
+  apiRouter.all("*", (req, res) => {
+    console.warn(`Unmatched API route: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({ 
+      error: "API route not found", 
+      path: req.originalUrl 
+    });
+  });
+
+  // Register the API router
+  app.use("/api", apiRouter);
+
+  // Global Error Handler for both API and other routes
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error("Global Error Handler:", err);
+    if (req.path.startsWith("/api/")) {
+      return res.status(err.status || 500).json({
+        error: "Internal Server Error",
+        message: err.message,
+        path: req.path
+      });
+    }
+    next(err);
   });
 
   // Vite middleware for development vs static serve for production
