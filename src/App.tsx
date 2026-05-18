@@ -8,6 +8,8 @@ import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Chat from './components/Chat';
 import SwynLogo from './components/SwynLogo';
+import { auth } from './lib/firebase';
+import { signOut } from 'firebase/auth';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'find' | 'directory' | 'history' | 'chat'>('dashboard');
@@ -16,26 +18,24 @@ export default function App() {
   const [userEmail, setUserEmail] = useState('');
 
   useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    const email = localStorage.getItem('user_email');
-    if (token) {
-      setIsAuthenticated(true);
-      if (email) {
-        setUserEmail(email);
+    // Listen for Firebase auth state changes
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        const token = await user.getIdToken();
+        localStorage.setItem('auth_token', token);
+        localStorage.setItem('user_email', user.email || '');
+        setUserEmail(user.email || '');
+        setIsAuthenticated(true);
       } else {
-        try {
-          const payloadBase64 = token.split('.')[1];
-          const decoded = JSON.parse(atob(payloadBase64));
-          if (decoded.email) {
-            setUserEmail(decoded.email);
-            localStorage.setItem('user_email', decoded.email);
-          }
-        } catch (e) {
-          console.error("Failed to decode token", e);
-        }
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user_email');
+        setIsAuthenticated(false);
+        setUserEmail('');
       }
-    }
-    setIsLoadingAuth(false);
+      setIsLoadingAuth(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const handleLogin = (token: string, email: string) => {
@@ -47,7 +47,12 @@ export default function App() {
     setIsAuthenticated(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.error("Sign out error", e);
+    }
     localStorage.removeItem('auth_token');
     localStorage.removeItem('user_email');
     setIsAuthenticated(false);

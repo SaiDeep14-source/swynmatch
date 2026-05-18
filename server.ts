@@ -166,7 +166,8 @@ async function startServer() {
   });
 
   app.use(cors());
-  app.use(express.json());
+  app.use(express.json({ limit: "10mb" }));
+  app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
   // JWT Middleware setup using Firebase Admin
   const authenticateToken = async (req: any, res: any, next: any) => {
@@ -180,11 +181,15 @@ async function startServer() {
       next();
     } catch (err: any) {
       console.error("Firebase auth verification failed:", err.message);
-      return res.status(403).json({ error: "Forbidden" });
+      // More detailed logging for expired tokens
+      if (err.code === 'auth/id-token-expired') {
+        console.warn(`Token expired for request: ${req.method} ${req.path}`);
+      }
+      return res.status(403).json({ error: "Forbidden", message: err.message, code: err.code });
     }
   };
 
-  app.use("/api", (req, res, next) => {
+  app.use("/api", async (req, res, next) => {
     console.log("API Request:", req.method, req.originalUrl, req.path);
     if (
       req.path.startsWith("/auth/") ||
@@ -193,7 +198,7 @@ async function startServer() {
     ) {
       return next();
     }
-    authenticateToken(req, res, next);
+    await authenticateToken(req, res, next);
   });
 
   app.get("/api/chat/history", authenticateToken, (req: any, res) => {
@@ -431,9 +436,7 @@ async function startServer() {
         return res.status(404).json({ error: "No sources to sync found" });
       }
 
-      let allExperts: any[] = [];
-
-      for (const source of sourcesToSync) {
+      const syncTasks = sourcesToSync.map(async (source: any) => {
         const link = source.url;
         const match = link.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
         if (match && match[1]) {
@@ -441,8 +444,10 @@ async function startServer() {
           const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
 
           try {
+            console.log(`Syncing sheet: ${link}`);
             const response = await axios.get(exportUrl, {
               responseType: "text",
+              timeout: 30000, // 30 second timeout
             });
             const csvData = response.data;
 
@@ -451,100 +456,45 @@ async function startServer() {
               skipEmptyLines: true,
               transformHeader: (header) => header.trim().toLowerCase(),
             });
+            
             const knownKeys = [
-              "id",
-              "name",
-              "fullname",
-              "full name",
-              "expert",
-              "role",
-              "title",
-              "job",
-              "job title",
-              "current job title / role",
-              "current professional headline",
-              "current / most recent role",
-              "industry",
-              "primary industry",
-              "key sectors / industries",
-              "sectors",
-              "experience",
-              "exp",
-              "level",
-              "years",
-              "total years of experience",
-              "total years of professional experience",
-              "email",
-              "personal email",
-              "contact",
-              "notes",
-              "description",
-              "bio",
-              "brief professional bio",
-              "please provide a brief biography / professional summary",
-              "first name",
-              "last name",
+              "id", "name", "fullname", "full name", "expert", "role", "title", "job", "job title",
+              "current job title / role", "current professional headline", "current / most recent role",
+              "industry", "primary industry", "key sectors / industries", "sectors", "experience",
+              "exp", "level", "years", "total years of experience", "total years of professional experience",
+              "email", "personal email", "contact", "notes", "description", "bio", "brief professional bio",
+              "please provide a brief biography / professional summary", "first name", "last name",
             ];
+
             const pExperts = parsed.data
               .map((row: any) => {
-                const industry =
-                  row.industry ||
-                  row["primary industry"] ||
-                  row["key sectors / industries"] ||
-                  row.sectors ||
-                  "";
-
                 const metadata: Record<string, any> = {};
                 for (const key of Object.keys(row)) {
-                  if (
-                    key &&
-                    !knownKeys.includes(key.toLowerCase()) &&
-                    row[key] !== ""
-                  ) {
+                  if (key && !knownKeys.includes(key.toLowerCase()) && row[key] !== "") {
                     metadata[key] = row[key];
                   }
                 }
 
-                let name =
-                  row.name ||
-                  row.fullname ||
-                  row["full name"] ||
-                  row.expert ||
-                  "";
+                let name = row.name || row.fullname || row["full name"] || row.expert || "";
                 if (!name && row["first name"]) {
-                  name =
-                    `${row["first name"]} ${row["last name"] || ""}`.trim();
+                  name = `${row["first name"]} ${row["last name"] || ""}`.trim();
                 }
                 if (!name) name = "Unknown";
 
-                const role =
-                  row.role ||
-                  row.title ||
-                  row.job ||
-                  row["job title"] ||
-                  row["current job title / role"] ||
-                  row["current professional headline"] ||
-                  row["current / most recent role"] ||
-                  "";
-                const experience =
-                  row.experience ||
-                  row.exp ||
-                  row.level ||
-                  row.years ||
-                  row["total years of experience"] ||
-                  row["total years of professional experience"] ||
-                  "";
-                const email =
-                  row.email || row["personal email"] || row.contact || "";
-                const notes =
-                  row.notes ||
-                  row.description ||
-                  row.bio ||
-                  row["brief professional bio"] ||
-                  row[
-                    "please provide a brief biography / professional summary"
-                  ] ||
-                  "";
+                const role = row.role || row.title || row.job || row["job title"] || 
+                             row["current job title / role"] || row["current professional headline"] || 
+                             row["current / most recent role"] || "";
+                
+                const industry = row.industry || row["primary industry"] || 
+                                row["key sectors / industries"] || row.sectors || "";
+
+                const experience = row.experience || row.exp || row.level || row.years || 
+                                  row["total years of experience"] || row["total years of professional experience"] || "";
+                
+                const email = (row.email || row["personal email"] || row.contact || "").trim().toLowerCase();
+                
+                const notes = row.notes || row.description || row.bio || row["brief professional bio"] || 
+                             row["please provide a brief biography / professional summary"] || "";
 
                 return {
                   id: row.id || uuidv4(),
@@ -559,47 +509,60 @@ async function startServer() {
               })
               .filter((expert: any) => expert.name !== "Unknown");
 
-            allExperts = [...allExperts, ...pExperts];
             source.lastSynced = new Date().toISOString();
+            source.status = "success";
+            source.error = null;
+            return pExperts;
           } catch (err: any) {
             console.error(`Failed to fetch sheet ${link}:`, err.message);
+            source.status = "error";
+            source.error = err.message;
+            return [];
           }
+        } else {
+          source.status = "error";
+          source.error = "Invalid Google Sheets URL format";
+          return [];
         }
+      });
+
+      const results = await Promise.all(syncTasks);
+      let allExperts: any[] = [];
+      for (const resList of results) {
+        allExperts = [...allExperts, ...resList];
       }
 
       const existingExperts = await readExperts();
       const updatedExperts = [...existingExperts];
 
       for (const ne of allExperts) {
+        let idx = -1;
         if (ne.email) {
-          const idx = updatedExperts.findIndex((e) => e.email === ne.email);
-          if (idx !== -1) {
-            updatedExperts[idx] = {
-              ...updatedExperts[idx],
-              ...ne,
-              metadata: { ...updatedExperts[idx].metadata, ...ne.metadata },
-            };
-          } else {
-            updatedExperts.push(ne);
-          }
+          idx = updatedExperts.findIndex((e) => e.email && e.email.toLowerCase() === ne.email.toLowerCase());
         } else {
-          const idx = updatedExperts.findIndex((e) => e.name === ne.name);
-          if (idx !== -1) {
-            updatedExperts[idx] = {
-              ...updatedExperts[idx],
-              ...ne,
-              metadata: { ...updatedExperts[idx].metadata, ...ne.metadata },
-            };
-          } else {
-            updatedExperts.push(ne);
-          }
+          idx = updatedExperts.findIndex((e) => e.name.toLowerCase() === ne.name.toLowerCase());
+        }
+
+        if (idx !== -1) {
+          updatedExperts[idx] = {
+            ...updatedExperts[idx],
+            ...ne,
+            metadata: { ...updatedExperts[idx].metadata, ...ne.metadata },
+          };
+        } else {
+          updatedExperts.push(ne);
         }
       }
 
       await writeExperts(updatedExperts);
       await writeSources(sources);
 
-      res.json({ success: true, count: allExperts.length });
+      console.log(`Sync completed. Total records added/updated: ${allExperts.length}`);
+      res.json({ 
+        success: true, 
+        count: allExperts.length,
+        sources: sourcesToSync.map((s: any) => ({ id: s.id, status: s.status, error: s.error }))
+      });
     } catch (err: any) {
       console.error(err);
       res.status(500).json({ error: "Failed to sync sources" });

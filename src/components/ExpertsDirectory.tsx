@@ -237,12 +237,25 @@ export default function ExpertsDirectory() {
 
       if (res.ok) {
         const data = await res.json();
-        showSuccess(`Successfully synchronized experts from online sheets.`);
+        const successCount = data.sources?.filter((s: any) => s.status === 'success').length || 0;
+        const errorCount = data.sources?.filter((s: any) => s.status === 'error').length || 0;
+        
+        if (errorCount === 0) {
+          showSuccess(`Successfully synchronized ${data.count} experts from ${successCount} sources.`);
+        } else {
+          showSuccess(`Sync partially successful: ${data.count} experts added from ${successCount} sources. ${errorCount} sources failed.`);
+          const errors = data.sources
+            .filter((s: any) => s.status === 'error')
+            .map((s: any) => s.error)
+            .join(', ');
+          console.warn('Sync errors:', errors);
+        }
         setLinksInput('');
         fetchExperts(); // Refresh list
         fetchSources();
       } else {
-        setError('Failed to sync from links.');
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Failed to sync from links.');
       }
     } catch (err) {
       setError('Connection error while syncing links.');
@@ -262,11 +275,18 @@ export default function ExpertsDirectory() {
       });
 
       if (res.ok) {
-        showSuccess(`Successfully synchronized individual sheet.`);
-        fetchExperts(); 
-        fetchSources();
+        const data = await res.json();
+        const sourceResult = data.sources?.[0];
+        if (sourceResult?.status === 'error') {
+          setError(`Failed to sync source: ${sourceResult.error}`);
+        } else {
+          showSuccess(`Successfully synchronized ${data.count} experts from this source.`);
+          fetchExperts();
+          fetchSources();
+        }
       } else {
-        setError('Failed to sync sheet.');
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Failed to sync source.');
       }
     } catch (err) {
       setError('Connection error.');
