@@ -120,7 +120,7 @@ async function writeMatchHistory(history: any[]) {
 }
 
 async function startServer() {
-  app.use(cors({   origin: '*',   credentials: true }));
+  const app = express();
   const PORT = 3000;
   const server = http.createServer(app);
   const io = new SocketIOServer(server, { cors: { origin: "*" } });
@@ -234,6 +234,19 @@ async function startServer() {
       console.error(`API Auth Middleware Error on ${req.path}:`, err);
       next(err);
     }
+  });
+
+  apiRouter.get("/debug/env", (req, res) => {
+    const envVars = Object.keys(process.env).sort().map(key => {
+      const value = process.env[key] || "";
+      // Mask values that look like secrets or are long
+      let displayValue = value;
+      if (key.toLowerCase().includes("key") || key.toLowerCase().includes("secret") || key.toLowerCase().includes("token") || value.length > 20) {
+        displayValue = value.substring(0, 4) + "****" + value.substring(value.length - 4);
+      }
+      return { key, value: displayValue };
+    });
+    res.json(envVars);
   });
 
   // Health check

@@ -8,11 +8,12 @@ import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import Chat from './components/Chat';
 import SwynLogo from './components/SwynLogo';
+import { EnvDashboard } from './components/EnvDashboard';
 import { auth } from './lib/firebase';
 import { signOut } from 'firebase/auth';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'find' | 'directory' | 'history' | 'chat'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'find' | 'directory' | 'history' | 'chat' | 'env'>('dashboard');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [userEmail, setUserEmail] = useState('');
@@ -125,6 +126,15 @@ export default function App() {
             <MessageSquare className="h-5 w-5 mr-3" />
             Messages
           </button>
+          <button 
+            onClick={() => setActiveTab('env')}
+            className={`w-full flex items-center px-3 py-2.5 rounded-lg font-medium transition-colors ${
+              activeTab === 'env' ? 'bg-orange-50 text-orange-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+            }`}
+          >
+            <Briefcase className="h-5 w-5 mr-3" />
+            Env Config
+          </button>
         </nav>
         <div className="p-4 border-t border-gray-200">
           <button
@@ -153,11 +163,12 @@ export default function App() {
                <option value="directory">Expert Directory</option>
                <option value="history">Match History</option>
                <option value="chat">Messages</option>
+               <option value="env">Environment</option>
              </select>
           </div>
           <div className="hidden md:block flex-1">
              <h1 className="text-xl font-semibold text-gray-800">
-               {activeTab === 'dashboard' ? 'Dashboard' : activeTab === 'directory' ? 'Directory' : activeTab === 'history' ? 'Match History' : activeTab === 'chat' ? 'Messages' : 'Find Experts'}
+               {activeTab === 'dashboard' ? 'Dashboard' : activeTab === 'directory' ? 'Directory' : activeTab === 'history' ? 'Match History' : activeTab === 'chat' ? 'Messages' : activeTab === 'env' ? 'System Environment' : 'Find Experts'}
              </h1>
           </div>
           <div className="flex items-center gap-3 shrink-0">
@@ -236,6 +247,18 @@ export default function App() {
                    className="h-full overflow-hidden"
                  >
                    <Chat currentUser={userEmail || 'Guest'} />
+                 </motion.div>
+               )}
+               {activeTab === 'env' && (
+                 <motion.div
+                   key="env"
+                   initial={{ opacity: 0, x: -10 }}
+                   animate={{ opacity: 1, x: 0 }}
+                   exit={{ opacity: 0, x: 10 }}
+                   transition={{ duration: 0.2 }}
+                   className="h-full overflow-auto pb-8"
+                 >
+                   <EnvDashboard />
                  </motion.div>
                )}
              </AnimatePresence>
