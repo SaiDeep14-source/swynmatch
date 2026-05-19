@@ -1,12 +1,14 @@
 import { auth } from './firebase';
 
+const API_BASE = import.meta.env.VITE_API_URL;
+
 export const authFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   // Wait for Firebase to initialize if it hasn't yet
   const getFreshToken = (): Promise<string | null> => {
     return new Promise((resolve) => {
       // If user is already available, get token directly
       if (auth.currentUser) {
-        auth.currentUser.getIdToken(true).then(resolve).catch(() => resolve(null));
+        auth.currentUser.getIdToken().then(resolve).catch(() => resolve(null));
         return;
       }
 
@@ -15,7 +17,7 @@ export const authFetch = async (input: RequestInfo | URL, init?: RequestInit) =>
         unsubscribe();
         if (user) {
           try {
-            const token = await user.getIdToken(true);
+            const token = await user.getIdToken();
             resolve(token);
           } catch (e) {
             resolve(null);
@@ -43,7 +45,15 @@ export const authFetch = async (input: RequestInfo | URL, init?: RequestInit) =>
     headers.set('Authorization', `Bearer ${token}`);
   }
   
-  const response = await fetch(input, { ...init, headers });
+  const API_BASE = import.meta.env.VITE_API_URL;  const url =   typeof input === 'string'     ? `${API_BASE}${input}`     : input; const url =
+  typeof input === 'string'
+    ? `${API_BASE}${input}`
+    : input;
+
+const response = await fetch(url, {
+  ...init,
+  headers,
+});
   if (response.status === 401 || response.status === 403) {
     // Only reload if we are sure we are not in an infinite loop
     const lastReload = sessionStorage.getItem('last_auth_reload');
