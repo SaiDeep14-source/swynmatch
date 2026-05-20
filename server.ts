@@ -21,18 +21,19 @@ try {
 }
 
 // Initialize Firebase Admin (assuming it was already set up)
+// Initialize Firebase Admin
 if (!admin.apps.length) {
   try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || "{}");
+
     admin.initializeApp({
-      projectId: firebaseConfig.projectId
+      credential: admin.credential.cert(serviceAccount),
+      projectId: process.env.FIREBASE_PROJECT_ID
     });
+
+    console.log("Firebase Admin initialized with service account");
   } catch (error) {
-    console.error("Firebase admin init failed with projectId, trying default init", error);
-    try {
-      admin.initializeApp();
-    } catch (fallbackError) {
-      console.error("Firebase admin standard init failed", fallbackError);
-    }
+    console.error("Firebase admin init failed:", error);
   }
 }
 
