@@ -78,7 +78,7 @@ const ExpertsDirectory: React.FC = () => {
     } catch {
       // API fallback just in case
       try {
-        const res = await fetch('/api/experts');
+        const res = await authFetch('/api/experts');
         const data = await res.json();
         setExperts(data);
       } catch (e) {}
@@ -93,7 +93,7 @@ const ExpertsDirectory: React.FC = () => {
     // Fetch stored sheet URL config
     const token = localStorage.getItem('token');
     if (token) {
-      fetch('/api/sheets/config', {
+      authFetch('/api/sheets/config', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -123,7 +123,7 @@ const ExpertsDirectory: React.FC = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/sheets/sync', {
+      const response = await authFetch('/api/sheets/sync', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
