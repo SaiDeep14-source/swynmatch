@@ -69,7 +69,7 @@ const MatchEngine: React.FC = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/match', {
+      const response = await authfetch('/api/match', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
