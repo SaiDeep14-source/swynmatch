@@ -760,14 +760,28 @@ const ExpertsDirectory: React.FC = () => {
                           {Object.entries(fields).map(([key, value]) => {
                             if (!value || String(value).trim() === "") return null;
 
+                            const strValue = String(value).trim();
+                            const isUrl = strValue.startsWith('http://') || strValue.startsWith('https://') || strValue.startsWith('www.') || strValue.includes('drive.google.com') || strValue.includes('linkedin.com/');
+
                             return (
                               <div key={key} className="p-3 bg-gray-50/60 border border-gray-100 rounded-xl transition-all hover:bg-gray-50 text-left">
                                 <span className="block text-[10px] text-orange-500 font-bold uppercase tracking-wide mb-1">
                                   {key}
                                 </span>
-                                <span className="text-xs font-semibold text-gray-800 break-words leading-relaxed block whitespace-pre-line">
-                                  {String(value)}
-                                </span>
+                                {isUrl ? (
+                                  <a 
+                                    href={strValue.startsWith('http') ? strValue : `https://${strValue}`}
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 break-words leading-relaxed block whitespace-pre-line underline"
+                                  >
+                                    {strValue}
+                                  </a>
+                                ) : (
+                                  <span className="text-xs font-semibold text-gray-800 break-words leading-relaxed block whitespace-pre-line">
+                                    {strValue}
+                                  </span>
+                                )}
                               </div>
                             );
                           })}
