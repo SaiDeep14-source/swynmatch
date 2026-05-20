@@ -20,7 +20,7 @@ import {
   Users
 } from 'lucide-react';
 import SwynLogo from './SwynLogo';
-import { authFetch } from '../lib/api';
+
 interface Expert {
   id: string;
   name: string;
@@ -69,7 +69,7 @@ const MatchEngine: React.FC = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await authfetch('/api/match', {
+      const response = await authauthfetch('/api/match', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -109,25 +109,47 @@ const MatchEngine: React.FC = () => {
     setError(null);
 
     try {
+      const matchData = {
+        expertId: selectedExpert.id,
+        expertName: selectedExpert.name,
+        expertRole: selectedExpert.expertise,
+        clientName,
+        clientContact,
+        clientIndustry,
+        clientLocation,
+        clientBudget,
+        clientPreferredRole,
+        clientRequirements: query || searchedQuery,
+        createdAt: new Date().toISOString(),
+        timestamp: new Date().toISOString()
+      };
+
+      try {
+        const { auth, db } = await import('../lib/firebase');
+        const { doc, setDoc } = await import('firebase/firestore');
+        const reqUser = auth.currentUser;
+        if (reqUser) {
+          const docId = Math.random().toString(36).substring(2, 15);
+          await setDoc(doc(db, "matches", docId), {
+            ...matchData,
+            id: docId,
+            userId: reqUser.uid,
+            userEmail: reqUser.email
+          });
+        }
+      } catch (dbErr) {
+        console.warn("Client side save match warning:", dbErr);
+      }
+
+      // API fallback
       const token = localStorage.getItem('token');
-      const response = await authFetch('/api/matches/save', {
+      const response = await authfetch('/api/matches/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          expertId: selectedExpert.id,
-          expertName: selectedExpert.name,
-          expertRole: selectedExpert.expertise,
-          clientName,
-          clientContact,
-          clientIndustry,
-          clientLocation,
-          clientBudget,
-          clientPreferredRole,
-          clientRequirements: query || searchedQuery
-        })
+        body: JSON.stringify(matchData)
       });
 
       if (!response.ok) throw new Error('Could not record match interaction.');
@@ -526,14 +548,28 @@ const MatchEngine: React.FC = () => {
                           {Object.entries(fields).map(([key, value]) => {
                             if (!value || String(value).trim() === "") return null;
 
+                            const strValue = String(value).trim();
+                            const isUrl = strValue.startsWith('http://') || strValue.startsWith('https://') || strValue.startsWith('www.') || strValue.includes('drive.google.com') || strValue.includes('linkedin.com/');
+
                             return (
                               <div key={key} className="p-3 bg-gray-50/60 border border-gray-100 rounded-xl transition-all hover:bg-gray-50 text-left">
                                 <span className="block text-[10px] text-orange-500 font-bold uppercase tracking-wide mb-1">
                                   {key}
                                 </span>
-                                <span className="text-xs font-semibold text-gray-800 break-words leading-relaxed block whitespace-pre-line animate-fade-in text-left">
-                                  {String(value)}
-                                </span>
+                                {isUrl ? (
+                                  <a 
+                                    href={strValue.startsWith('http') ? strValue : `https://${strValue}`}
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 break-words leading-relaxed block whitespace-pre-line underline animate-fade-in text-left"
+                                  >
+                                    {strValue}
+                                  </a>
+                                ) : (
+                                  <span className="text-xs font-semibold text-gray-800 break-words leading-relaxed block whitespace-pre-line animate-fade-in text-left">
+                                    {strValue}
+                                  </span>
+                                )}
                               </div>
                             );
                           })}
