@@ -21,14 +21,16 @@ import {
   Trash2
 } from 'lucide-react';
 import { authFetch } from '../lib/api';
+import { db } from '../lib/firebase';
+import { collection, getDocs, writeBatch, doc, setDoc } from 'firebase/firestore';
 
 interface Expert {
   id: string;
   name: string;
   expertise: string;
   summary: string;
-  hourlyRate: number;
-  rating: number;
+  hourlyRate?: number;
+  rating?: number;
   availability: string;
   industry?: string;
   experience?: string;
@@ -64,15 +66,25 @@ const ExpertsDirectory: React.FC = () => {
   // Profile Detail Drawer State
   const [activeProfile, setActiveProfile] = useState<Expert | null>(null);
 
-  const fetchExperts = () => {
+  const fetchExperts = async () => {
     setLoading(true);
-    authFetch('/api/experts')
-      .then(res => res.json())
-      .then(data => {
+    try {
+      const snap = await getDocs(collection(db, "experts"));
+      if (!snap.empty) {
+        setExperts(snap.docs.map(d => d.data() as Expert));
+      } else {
+        setExperts([]);
+      }
+    } catch {
+      // API fallback just in case
+      try {
+        const res = await authfetch('/api/experts');
+        const data = await res.json();
         setExperts(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+      } catch (e) {}
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -81,7 +93,7 @@ const ExpertsDirectory: React.FC = () => {
     // Fetch stored sheet URL config
     const token = localStorage.getItem('token');
     if (token) {
-      authFetch('/api/sheets/config', {
+      authfetch('/api/sheets/config', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -120,6 +132,18 @@ const ExpertsDirectory: React.FC = () => {
         throw new Error(data.error || 'Failed to sync Google Sheets roster.');
       }
 
+      // 1. Also update directly in Firestore via Client SDK to guarantee cross-session sync
+      try {
+        const batch = writeBatch(db);
+        data.experts.forEach((exp: any) => {
+          batch.set(doc(db, "experts", exp.id), exp);
+        });
+        batch.set(doc(db, "config", "sheet_config"), { url: sheetUrl, lastSynced: new Date().toISOString() });
+        await batch.commit();
+      } catch (dbErr) {
+        console.warn("Client side firestore update warning:", dbErr);
+      }
+
       setSyncSuccess(`Success! Synced ${data.count} expert records dynamically.`);
       setExperts(data.experts);
       localStorage.removeItem('swyn_directory_cleared');
@@ -136,12 +160,28 @@ const ExpertsDirectory: React.FC = () => {
   const handleClearAll = async () => {
     try {
       setLoading(true);
+      
+      // Clear Firestore directly first
+      try {
+        const snap = await getDocs(collection(db, "experts"));
+        const batch = writeBatch(db);
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      } catch (dbErr) {
+        console.warn("Client side firestore clear warning:", dbErr);
+      }
+      
+      // Fallback API call just in case
       const response = await authFetch('/api/experts/clear', {
         method: 'POST'
       });
       if (response.ok) {
         const data = await response.json();
         setExperts(data.experts || []);
+        localStorage.setItem('swyn_directory_cleared', 'true');
+        setHasClearedDeliberately(true);
+      } else {
+        setExperts([]);
         localStorage.setItem('swyn_directory_cleared', 'true');
         setHasClearedDeliberately(true);
       }
@@ -175,6 +215,12 @@ const ExpertsDirectory: React.FC = () => {
       // Since we also store fallback lists locally, append dynamically
       setExperts(prev => [newRecord, ...prev]);
       
+      try {
+        await setDoc(doc(db, "experts", newRecord.id), newRecord);
+      } catch (dbErr) {
+        console.warn("Client side firestore setDoc warning:", dbErr);
+      }
+      
       // Save directly to raw database storage on node backend
       const response = await authFetch('/api/experts/add', {
         method: 'POST',
@@ -189,6 +235,9 @@ const ExpertsDirectory: React.FC = () => {
         setExperts(data.experts);
         localStorage.removeItem('swyn_directory_cleared');
         setHasClearedDeliberately(false);
+      } else {
+         localStorage.removeItem('swyn_directory_cleared');
+         setHasClearedDeliberately(false);
       }
       
       setShowAddModal(false);
