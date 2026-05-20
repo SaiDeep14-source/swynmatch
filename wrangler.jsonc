@@ -5,8 +5,7 @@
   "observability": {
     "enabled": true
   },
-assets = { 
-
+assets{ 
     "not_found_handling": "single-page-application"
   },
   "compatibility_flags": [
