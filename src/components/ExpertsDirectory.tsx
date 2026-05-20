@@ -428,9 +428,9 @@ const ExpertsDirectory: React.FC = () => {
                   <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide pl-1">Target Worksheet CSV/Export Link</label>
                   <div className="flex gap-2">
                     <input 
-                      type="url" 
+                      type="text" 
                       required
-                      placeholder="e.g. https://docs.google.com/spreadsheets/d/your-spreadsheet-id/edit"
+                      placeholder="e.g. https://docs.google.com/..., https://docs.google.com/..."
                       className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-150 rounded-xl focus:bg-white focus:ring-2 focus:ring-swyn-orange/20 focus:border-swyn-orange outline-none transition-all text-xs font-semibold"
                       value={sheetUrl}
                       onChange={(e) => setSheetUrl(e.target.value)}
