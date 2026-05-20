@@ -50,7 +50,7 @@ function logFirestoreWarning(message: string, error: any) {
   if (isPermissionDenied) {
     if (!isFirestoreServerDisabled) {
       isFirestoreServerDisabled = true;
-      console.log("Firestore server-side access disabled: Insufficient IAM permissions on server account. Safe local fallbacks are fully active and running.");
+      console.log("Firestore server-side access disabled: Insufficient IAM permissions. Local fallbacks active.");
     }
   } else {
     console.warn(`${message} (${firstLineMsg})`);
@@ -98,7 +98,7 @@ function logAuthWarning(message: string, error: any) {
   if (isPermissionDenied) {
     if (!isAuthServerDisabled) {
       isAuthServerDisabled = true;
-      console.log("Firebase Auth server-side access disabled: Insufficient permission or service usage consumer denial.");
+      console.log("Firebase Auth server-side access disabled. Safe fallback active.");
     }
   } else {
     console.warn(`${message}: ${firstLineMsg}`);
@@ -128,7 +128,7 @@ async function loadAllExperts(): Promise<any[]> {
       }
     }
   } catch (error: any) {
-    logFirestoreWarning("Firestore experts loading failed: Local fallback activated.", error);
+    logFirestoreWarning("Firestore experts loading failed. Local fallback activated.", error);
   }
 
   try {
@@ -163,8 +163,7 @@ async function startServer() {
   const io = new SocketIOServer(server, { cors: { origin: "*" } });
 
   app.use(express.json());
-
-  // Bootstrap Admin Account
+    // Bootstrap Admin Account
   const adminEmail = "info@swyn.in";
   const fAuth = getFirebaseAuth();
 
@@ -305,7 +304,7 @@ async function startServer() {
             ...expert
           });
         } catch (e: any) {
-          logFirestoreWarning("Firestore write ignored gracefully during manual add:", e);
+          logFirestoreWarning("Firestore write ignored during manual add:", e);
         }
       }
 
@@ -335,7 +334,7 @@ async function startServer() {
             await batch.commit();
           }
         } catch (e: any) {
-          logFirestoreWarning("Firestore clear ignored gracefully during clear all:", e);
+          logFirestoreWarning("Firestore clear ignored during clear all:", e);
         }
       }
 
@@ -344,8 +343,7 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
-
-  apiRouter.post("/match", authenticate, async (req, res) => {
+    apiRouter.post("/match", authenticate, async (req, res) => {
     try {
       const { query } = req.body;
       const experts = await loadAllExperts();
@@ -566,8 +564,7 @@ Return ONLY the raw JSON array. Do not include markdown code block formatting or
       res.status(500).json({ error: err.message });
     }
   });
-
-  apiRouter.post("/sheets/sync", authenticate, async (req: any, res) => {
+    apiRouter.post("/sheets/sync", authenticate, async (req: any, res) => {
     try {
       const { url } = req.body;
 
@@ -777,8 +774,7 @@ Return ONLY the raw JSON array. Do not include markdown code block formatting or
       res.status(500).json({ error: err.message });
     }
   });
-
-  apiRouter.get("/sheets/config", authenticate, async (req: any, res) => {
+    apiRouter.get("/sheets/config", authenticate, async (req: any, res) => {
     try {
       const fDb = getFirestoreDb();
 
