@@ -105,7 +105,7 @@ export const AdminDashboard: React.FC = () => {
                     <td className="px-8 py-6">
                       <div className="flex items-center space-x-4">
                         <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-black text-sm">
-                          {user.email[0].toUpperCase()}
+                          {user.email ? user.email[0].toUpperCase() : 'U'}
                         </div>
                         <div>
                           <p className="text-sm font-black text-gray-900 leading-none">{user.email}</p>

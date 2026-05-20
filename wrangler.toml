@@ -1,5 +1,0 @@
-name = "fractional-cxo-matchmaker"
-compatibility_date = "2026-05-20"
-
-[assets]
-directory = "./dist"

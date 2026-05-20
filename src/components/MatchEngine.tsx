@@ -363,7 +363,7 @@ const MatchEngine: React.FC = () => {
 
                   <div className="bg-gradient-to-r from-swyn-goldLight to-amber-50/50 p-4 rounded-xl flex items-center space-x-3.5 border border-swyn-goldMedium/20">
                     <div className="w-12 h-12 bg-swyn-gold border border-swyn-goldMedium/30 text-white flex items-center justify-center font-bold text-base rounded-full">
-                      {selectedExpert.name[0]}
+                      {selectedExpert.name ? selectedExpert.name[0] : 'E'}
                     </div>
                     <div>
                       <h4 className="font-bold text-gray-900">{selectedExpert.name}</h4>

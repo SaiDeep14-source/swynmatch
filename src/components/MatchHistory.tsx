@@ -168,10 +168,10 @@ export default function MatchHistory() {
                       
                       <div className="flex items-start gap-3 pt-2">
                         <div className="h-10 w-10 bg-orange-100 rounded-full flex items-center justify-center text-orange-700 font-bold shrink-0">
-                          {record.expertName.charAt(0)}
+                          {record.expertName ? record.expertName.charAt(0) : 'E'}
                         </div>
                         <div>
-                          <p className="text-base font-bold text-gray-900">{record.expertName}</p>
+                          <p className="text-base font-bold text-gray-900">{record.expertName || 'Unknown Expert'}</p>
                           <p className="text-sm text-gray-600">{record.expertRole || 'Expert'}</p>
                         </div>
                       </div>
