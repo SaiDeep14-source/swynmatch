@@ -20,7 +20,7 @@ import {
   Users
 } from 'lucide-react';
 import SwynLogo from './SwynLogo';
-
+import { authFetch } from '../lib/api';
 interface Expert {
   id: string;
   name: string;
