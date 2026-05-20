@@ -19,6 +19,8 @@ import {
 import { motion } from 'motion/react';
 import { authFetch } from '../lib/api';
 import SwynLogo from './SwynLogo';
+import { db, auth } from '../lib/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 interface DashboardStats {
   totalExperts: number;
@@ -43,15 +45,15 @@ export default function Dashboard({
         let recentMatches: any[] = [];
         let topIndustries: { name: string; count: number }[] = [];
 
-        // 1. Fetch experts
+        // 1. Fetch experts directly from Firestore
         try {
-          const expertsRes = await authFetch('/api/experts');
-          if (expertsRes && expertsRes.ok) {
-            const data = await expertsRes.json();
-            totalExperts = data.length;
+          const expSnap = await getDocs(collection(db, "experts"));
+          if (!expSnap.empty) {
+            totalExperts = expSnap.size;
             
             const industryCounts: Record<string, number> = {};
-            data.forEach((expert: any) => {
+            expSnap.docs.forEach(doc => {
+              const expert = doc.data();
               const ind = expert.industry || expert.expertise;
               if (ind) {
                  industryCounts[ind] = (industryCounts[ind] || 0) + 1;
@@ -64,22 +66,41 @@ export default function Dashboard({
               .map(([name, count]) => ({ name, count }));
           }
         } catch (expertsErr) {
-          console.warn('Could not load experts for dashboard stats:', expertsErr);
+          console.warn('Could not load experts for dashboard stats via DB:', expertsErr);
+          // Fallback to API if DB logic fails purely on some specific older browsers
+          try {
+             const res = await authFetch('/api/experts');
+             if (res.ok) {
+                 const data = await res.json();
+                 totalExperts = data.length;
+             }
+          } catch (e) {}
         }
 
-        // 2. Fetch matches history
+        // 2. Fetch matches history directly from Firestore
         try {
-          const matchesRes = await authFetch('/api/matches/history');
-          if (matchesRes && matchesRes.ok) {
-            const data = await matchesRes.json();
-            totalMatches = data.length;
-            // Sort by timestamp descending and take top 3
-            recentMatches = data
-              .sort((a: any, b: any) => new Date(b.timestamp || b.createdAt).getTime() - new Date(a.timestamp || a.createdAt).getTime())
-              .slice(0, 3);
+          const user = auth.currentUser;
+          if (user) {
+             const q = query(collection(db, "matches"), where("userId", "==", user.uid));
+             const matchSnap = await getDocs(q);
+             if (!matchSnap.empty) {
+                totalMatches = matchSnap.size;
+                recentMatches = matchSnap.docs
+                   .map(d => ({id: d.id, ...d.data()}))
+                   .sort((a: any, b: any) => new Date(b.timestamp || b.createdAt).getTime() - new Date(a.timestamp || a.createdAt).getTime())
+                   .slice(0, 3);
+             }
           }
         } catch (matchesErr) {
-          console.warn('Could not load match history for dashboard stats:', matchesErr);
+          console.warn('Could not load match history via DB:', matchesErr);
+          try {
+             const res = await authFetch('/api/matches/history');
+             if (res.ok) {
+                 const data = await res.json();
+                 totalMatches = data.length;
+                 recentMatches = data.slice(0, 3);
+             }
+          } catch (e) {}
         }
 
         setStats({ totalExperts, totalMatches, recentMatches, topIndustries });

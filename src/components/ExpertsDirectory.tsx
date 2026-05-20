@@ -21,14 +21,16 @@ import {
   Trash2
 } from 'lucide-react';
 import { authFetch } from '../lib/api';
+import { db } from '../lib/firebase';
+import { collection, getDocs, writeBatch, doc, setDoc } from 'firebase/firestore';
 
 interface Expert {
   id: string;
   name: string;
   expertise: string;
   summary: string;
-  hourlyRate: number;
-  rating: number;
+  hourlyRate?: number;
+  rating?: number;
   availability: string;
   industry?: string;
   experience?: string;
@@ -42,12 +44,14 @@ const ExpertsDirectory: React.FC = () => {
   const [hasClearedDeliberately, setHasClearedDeliberately] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
 
+  // Sheets Sync Panels
   const [showSyncPanel, setShowSyncPanel] = useState(false);
   const [sheetUrl, setSheetUrl] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
+  // Manual Add Form Modal
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newTitle, setNewTitle] = useState('');
@@ -59,23 +63,41 @@ const ExpertsDirectory: React.FC = () => {
   const [newSummary, setNewSummary] = useState('');
   const [addingManual, setAddingManual] = useState(false);
 
+  // Profile Detail Drawer State
   const [activeProfile, setActiveProfile] = useState<Expert | null>(null);
 
-  const fetchExperts = () => {
+  const fetchExperts = async () => {
     setLoading(true);
-    authFetch('/api/experts')
-      .then(res => res.json())
-      .then(data => {
+    try {
+      const snap = await getDocs(collection(db, "experts"));
+      if (!snap.empty) {
+        setExperts(snap.docs.map(d => d.data() as Expert));
+      } else {
+        setExperts([]);
+      }
+    } catch {
+      // API fallback just in case
+      try {
+        const res = await fetch('/api/experts');
+        const data = await res.json();
         setExperts(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+      } catch (e) {}
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchExperts();
-
-    authFetch('/api/sheets/config')
+    
+    // Fetch stored sheet URL config
+    const token = localStorage.getItem('token');
+    if (token) {
+      fetch('/api/sheets/config', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
       .then(res => res.json())
       .then(data => {
         if (data && data.url) {
@@ -83,6 +105,7 @@ const ExpertsDirectory: React.FC = () => {
         }
       })
       .catch((e) => console.warn('Failed to load stored sheet config:', e));
+    }
   }, []);
 
   const handleSyncSheets = async (e: React.FormEvent) => {
@@ -94,10 +117,12 @@ const ExpertsDirectory: React.FC = () => {
     setSyncSuccess(null);
 
     try {
-      const response = await authFetch('/api/sheets/sync', {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/sheets/sync', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ url: sheetUrl })
       });
@@ -107,10 +132,23 @@ const ExpertsDirectory: React.FC = () => {
         throw new Error(data.error || 'Failed to sync Google Sheets roster.');
       }
 
+      // 1. Also update directly in Firestore via Client SDK to guarantee cross-session sync
+      try {
+        const batch = writeBatch(db);
+        data.experts.forEach((exp: any) => {
+          batch.set(doc(db, "experts", exp.id), exp);
+        });
+        batch.set(doc(db, "config", "sheet_config"), { url: sheetUrl, lastSynced: new Date().toISOString() });
+        await batch.commit();
+      } catch (dbErr) {
+        console.warn("Client side firestore update warning:", dbErr);
+      }
+
       setSyncSuccess(`Success! Synced ${data.count} expert records dynamically.`);
       setExperts(data.experts);
       localStorage.removeItem('swyn_directory_cleared');
       setHasClearedDeliberately(false);
+      // Keep the URL so the user sees which sheet is active/synced
       setTimeout(() => setShowSyncPanel(false), 2000);
     } catch (err: any) {
       setSyncError(err.message);
@@ -122,12 +160,28 @@ const ExpertsDirectory: React.FC = () => {
   const handleClearAll = async () => {
     try {
       setLoading(true);
+      
+      // Clear Firestore directly first
+      try {
+        const snap = await getDocs(collection(db, "experts"));
+        const batch = writeBatch(db);
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      } catch (dbErr) {
+        console.warn("Client side firestore clear warning:", dbErr);
+      }
+      
+      // Fallback API call just in case
       const response = await authFetch('/api/experts/clear', {
         method: 'POST'
       });
       if (response.ok) {
         const data = await response.json();
         setExperts(data.experts || []);
+        localStorage.setItem('swyn_directory_cleared', 'true');
+        setHasClearedDeliberately(true);
+      } else {
+        setExperts([]);
         localStorage.setItem('swyn_directory_cleared', 'true');
         setHasClearedDeliberately(true);
       }
@@ -145,6 +199,7 @@ const ExpertsDirectory: React.FC = () => {
 
     setAddingManual(true);
     try {
+      // Formulate a beautiful record layout mirroring sheets parser fields
       const newRecord = {
         id: Math.random().toString(36).substring(2, 10),
         name: newName,
@@ -157,8 +212,16 @@ const ExpertsDirectory: React.FC = () => {
         experience: newExperience || "20–25 years"
       };
 
+      // Since we also store fallback lists locally, append dynamically
       setExperts(prev => [newRecord, ...prev]);
-
+      
+      try {
+        await setDoc(doc(db, "experts", newRecord.id), newRecord);
+      } catch (dbErr) {
+        console.warn("Client side firestore setDoc warning:", dbErr);
+      }
+      
+      // Save directly to raw database storage on node backend
       const response = await authFetch('/api/experts/add', {
         method: 'POST',
         headers: {
@@ -172,8 +235,11 @@ const ExpertsDirectory: React.FC = () => {
         setExperts(data.experts);
         localStorage.removeItem('swyn_directory_cleared');
         setHasClearedDeliberately(false);
+      } else {
+         localStorage.removeItem('swyn_directory_cleared');
+         setHasClearedDeliberately(false);
       }
-
+      
       setShowAddModal(false);
       setNewName('');
       setNewTitle('');
@@ -186,12 +252,13 @@ const ExpertsDirectory: React.FC = () => {
     }
   };
 
+  // Pre-load default samples if empty on local fallback
   const getDisplayExperts = () => {
     if (experts.length > 0) return experts;
     if (hasClearedDeliberately || localStorage.getItem('swyn_directory_cleared') === 'true') {
       return [];
     }
-
+    // Elegant fallback lists mirroring real-time Google Sheet synchronization format
     return [
       {
         id: "exp-1",
@@ -251,6 +318,7 @@ const ExpertsDirectory: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-20 font-sans">
+      {/* Top Header Card - Styled Exactly like Image 2 */}
       <div className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
@@ -264,9 +332,11 @@ const ExpertsDirectory: React.FC = () => {
           </p>
         </div>
 
+        {/* Header Action Buttons Row */}
         <div className="flex flex-wrap gap-2 text-xs font-bold">
           <button 
             onClick={() => {
+              // Trigger simple automatic download of sheet headers CSV template
               const csvContent = "data:text/csv;charset=utf-8,Name,Expertise,Summary,Rate,Rating,Availability,Industry,Experience\nJohn Doe,Director Advisory,Experienced consultant,150,4.8,Mon-Wed,Startups,25+ years";
               const encodedUri = encodeURI(csvContent);
               const link = document.createElement("a");
@@ -338,6 +408,7 @@ const ExpertsDirectory: React.FC = () => {
         </div>
       </div>
 
+      {/* Embedded Google Sheets Sync Panel */}
       <AnimatePresence>
         {showSyncPanel && (
           <motion.div
@@ -357,9 +428,9 @@ const ExpertsDirectory: React.FC = () => {
                   <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide pl-1">Target Worksheet CSV/Export Link</label>
                   <div className="flex gap-2">
                     <input 
-                      type="url" 
+                      type="text" 
                       required
-                      placeholder="e.g. https://docs.google.com/spreadsheets/d/your-spreadsheet-id/edit"
+                      placeholder="e.g. https://docs.google.com/..., https://docs.google.com/..."
                       className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-150 rounded-xl focus:bg-white focus:ring-2 focus:ring-swyn-orange/20 focus:border-swyn-orange outline-none transition-all text-xs font-semibold"
                       value={sheetUrl}
                       onChange={(e) => setSheetUrl(e.target.value)}
@@ -400,7 +471,9 @@ const ExpertsDirectory: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* Directory Search & Table Block */}
       <div className="bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden flex flex-col">
+        {/* Table Toolbar bar */}
         <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
           <div className="relative w-80">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -414,6 +487,7 @@ const ExpertsDirectory: React.FC = () => {
           </div>
         </div>
 
+        {/* Beautiful Table Layout matching Image 2 */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -440,12 +514,16 @@ const ExpertsDirectory: React.FC = () => {
                 </tr>
               ) : (
                 filteredExperts.map((expert) => {
-                  const initial = String(expert?.name || "E").charAt(0).toUpperCase();
+                  const initial = expert.name ? expert.name[0].toUpperCase() : 'E';
                   const industryVal = expert.industry || expert.expertise || 'Consulting';
                   const experienceVal = expert.experience || '20–25 years';
 
                   return (
-                    <tr key={expert.id} className="hover:bg-gray-50/50 transition-colors align-middle">
+                    <tr 
+                      key={expert.id} 
+                      className="hover:bg-gray-50/50 transition-colors align-middle"
+                    >
+                      {/* Columns 1: Expert Photo avatar + uppercase name */}
                       <td className="py-4 px-6 whitespace-nowrap">
                         <div className="flex items-center space-x-3.5">
                           <div className="w-9 h-9 rounded-full bg-swyn-goldLight border border-swyn-goldMedium/30 flex items-center justify-center text-swyn-goldDark font-bold text-sm shadow-sm shrink-0">
@@ -465,14 +543,17 @@ const ExpertsDirectory: React.FC = () => {
                         </div>
                       </td>
 
+                      {/* Column 2: Industry */}
                       <td className="py-4 px-6 text-xs font-semibold text-gray-650 max-w-md truncate">
                         {industryVal}
                       </td>
 
+                      {/* Column 3: Experience */}
                       <td className="py-4 px-6 text-xs text-gray-650 font-semibold whitespace-nowrap">
                         {experienceVal}
                       </td>
 
+                      {/* Column 6: Action */}
                       <td className="py-4 px-6 text-center whitespace-nowrap">
                         <button 
                           onClick={() => setActiveProfile(expert)}
@@ -490,6 +571,7 @@ const ExpertsDirectory: React.FC = () => {
         </div>
       </div>
 
+      {/* Add Manual Form Modal */}
       <AnimatePresence>
         {showAddModal && (
           <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -610,6 +692,7 @@ const ExpertsDirectory: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* Profile Detail Drawer Card */}
       <AnimatePresence>
         {activeProfile && (
           <div className="fixed inset-0 bg-gray-900/65 backdrop-blur-sm flex items-center justify-end z-50">
@@ -631,7 +714,7 @@ const ExpertsDirectory: React.FC = () => {
                 <div className="space-y-6 pt-4">
                   <div className="text-center">
                     <div className="w-20 h-20 bg-orange-100/70 border border-orange-200/20 text-orange-600 font-bold text-2xl rounded-full flex items-center justify-center mx-auto mb-4 italic shadow-sm">
-                      {String(activeProfile?.name || "E").charAt(0).toUpperCase()}
+                      {activeProfile.name ? activeProfile.name[0] : 'E'}
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 leading-tight uppercase tracking-wide">{activeProfile.name}</h3>
                     <p className="text-xs font-bold text-orange-500 uppercase tracking-widest mt-1">
@@ -654,6 +737,7 @@ const ExpertsDirectory: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Comprehensive Spreadsheet or Fallback Sheet Details */}
                   {(() => {
                     const fields = activeProfile.customFields && Object.keys(activeProfile.customFields).length > 0 
                       ? activeProfile.customFields 
@@ -676,14 +760,28 @@ const ExpertsDirectory: React.FC = () => {
                           {Object.entries(fields).map(([key, value]) => {
                             if (!value || String(value).trim() === "") return null;
 
+                            const strValue = String(value).trim();
+                            const isUrl = strValue.startsWith('http://') || strValue.startsWith('https://') || strValue.startsWith('www.') || strValue.includes('drive.google.com') || strValue.includes('linkedin.com/');
+
                             return (
                               <div key={key} className="p-3 bg-gray-50/60 border border-gray-100 rounded-xl transition-all hover:bg-gray-50 text-left">
                                 <span className="block text-[10px] text-orange-500 font-bold uppercase tracking-wide mb-1">
                                   {key}
                                 </span>
-                                <span className="text-xs font-semibold text-gray-800 break-words leading-relaxed block whitespace-pre-line">
-                                  {String(value)}
-                                </span>
+                                {isUrl ? (
+                                  <a 
+                                    href={strValue.startsWith('http') ? strValue : `https://${strValue}`}
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 break-words leading-relaxed block whitespace-pre-line underline"
+                                  >
+                                    {strValue}
+                                  </a>
+                                ) : (
+                                  <span className="text-xs font-semibold text-gray-800 break-words leading-relaxed block whitespace-pre-line">
+                                    {strValue}
+                                  </span>
+                                )}
                               </div>
                             );
                           })}

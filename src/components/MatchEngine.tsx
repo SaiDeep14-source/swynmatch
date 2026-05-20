@@ -1,411 +1,612 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  Search,
-  Star,
-  CheckCircle,
-  Loader2,
-  Sparkles,
-  Save,
-  UserCheck,
+import { 
+  Search, 
+  Sparkles, 
+  Loader2, 
+  ArrowRight, 
+  Star, 
+  ShieldCheck, 
+  Zap, 
+  X, 
+  Check, 
+  Building, 
+  DollarSign, 
+  MapPin, 
+  Briefcase, 
+  Phone,
   AlertCircle,
-  History,
-  X,
-  ChevronRight
+  FileText,
+  Users
 } from 'lucide-react';
-import { authFetch } from '../lib/api';
+import SwynLogo from './SwynLogo';
 
-interface MatchResult {
+interface Expert {
   id: string;
   name: string;
   expertise: string;
   summary: string;
-  hourlyRate?: number;
   rating?: number;
+  hourlyRate?: number;
   availability?: string;
-  industry?: string;
-  experience?: string;
   matchScore?: number;
   whyTheyFit?: string;
   potentialGaps?: string;
-}
-
-interface SavedMatch {
-  id: string;
-  expertId: string;
-  expertName: string;
-  expertRole: string;
-  clientName: string;
-  clientIndustry: string;
-  clientLocation: string;
-  clientRequirements: string;
-  clientBudget: string;
-  clientPreferredRole: string;
-  clientContact: string;
-  createdAt?: string;
-  timestamp?: string;
+  industry?: string;
+  experience?: string;
+  customFields?: Record<string, string>;
 }
 
 const MatchEngine: React.FC = () => {
   const [query, setQuery] = useState('');
-  const [matches, setMatches] = useState<MatchResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [isMatching, setIsMatching] = useState(false);
+  const [matches, setMatches] = useState<Expert[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [searchedQuery, setSearchedQuery] = useState('');
 
+  // Match Confirmation Modal States
+  const [selectedExpert, setSelectedExpert] = useState<Expert | null>(null);
   const [clientName, setClientName] = useState('');
+  const [clientContact, setClientContact] = useState('');
   const [clientIndustry, setClientIndustry] = useState('');
   const [clientLocation, setClientLocation] = useState('');
   const [clientBudget, setClientBudget] = useState('');
   const [clientPreferredRole, setClientPreferredRole] = useState('');
-  const [clientContact, setClientContact] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const [history, setHistory] = useState<SavedMatch[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [savedIds, setSavedIds] = useState<string[]>([]);
+  // Profile Drawer States
+  const [activeProfile, setActiveProfile] = useState<Expert | null>(null);
 
-  const loadHistory = async () => {
-    try {
-      const res = await authFetch('/api/matches/history');
-      const data = await res.json();
-      setHistory(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.warn('Could not load match history:', err);
-    }
-  };
-
-  useEffect(() => {
-    loadHistory();
-  }, []);
-
-  const handleFindMatches = async (e: React.FormEvent) => {
+  const handleMatch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!query.trim()) return;
 
-    if (!query.trim()) {
-      setError('Please enter a requirement before finding matches.');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
+    setIsMatching(true);
+    setError(null);
     setMatches([]);
+    setSearchedQuery('');
 
     try {
-      const res = await authFetch('/api/match', {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/match', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ query })
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to find matches.');
-      }
-
-      setMatches(Array.isArray(data) ? data : []);
+      if (!response.ok) throw new Error('Matching engine failed to process request.');
+      const data = await response.json();
+      setMatches(data);
+      setSearchedQuery(query);
     } catch (err: any) {
-      setError(err.message || 'Failed to find matches.');
+      setError(err.message);
     } finally {
-      setLoading(false);
+      setIsMatching(false);
     }
   };
 
-  const handleSaveMatch = async (match: MatchResult) => {
-    setSavingId(match.id);
+  const openConfirmation = (expert: Expert) => {
+    setSelectedExpert(expert);
+    setClientName('');
+    setClientContact('');
+    setClientIndustry('');
+    setClientLocation('');
+    setClientBudget('');
+    setClientPreferredRole(expert.expertise || 'Consulting Advisory');
+    setSaveSuccess(false);
+    setError(null);
+  };
+
+  const handleSaveMatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedExpert) return;
+
+    setIsSaving(true);
+    setError(null);
 
     try {
-      const res = await authFetch('/api/matches/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          expertId: match.id,
-          expertName: match.name,
-          expertRole: match.expertise,
-          clientName: clientName || 'General Client',
-          clientIndustry: clientIndustry || match.industry || 'General',
-          clientLocation: clientLocation || 'Remote',
-          clientRequirements: query,
-          clientBudget: clientBudget || 'Flexible',
-          clientPreferredRole: clientPreferredRole || match.expertise,
-          clientContact: clientContact || ''
-        })
-      });
+      const matchData = {
+        expertId: selectedExpert.id,
+        expertName: selectedExpert.name,
+        expertRole: selectedExpert.expertise,
+        clientName,
+        clientContact,
+        clientIndustry,
+        clientLocation,
+        clientBudget,
+        clientPreferredRole,
+        clientRequirements: query || searchedQuery,
+        createdAt: new Date().toISOString(),
+        timestamp: new Date().toISOString()
+      };
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to save match.');
+      try {
+        const { auth, db } = await import('../lib/firebase');
+        const { doc, setDoc } = await import('firebase/firestore');
+        const reqUser = auth.currentUser;
+        if (reqUser) {
+          const docId = Math.random().toString(36).substring(2, 15);
+          await setDoc(doc(db, "matches", docId), {
+            ...matchData,
+            id: docId,
+            userId: reqUser.uid,
+            userEmail: reqUser.email
+          });
+        }
+      } catch (dbErr) {
+        console.warn("Client side save match warning:", dbErr);
       }
 
-      setSavedIds(prev => [...prev, match.id]);
-      await loadHistory();
+      // API fallback
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/matches/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(matchData)
+      });
+
+      if (!response.ok) throw new Error('Could not record match interaction.');
+      
+      setSaveSuccess(true);
+      setTimeout(() => {
+        setSelectedExpert(null);
+        setSaveSuccess(false);
+      }, 2000);
     } catch (err: any) {
-      setError(err.message || 'Failed to save match.');
+      setError(err.message);
     } finally {
-      setSavingId(null);
+      setIsSaving(false);
     }
   };
 
   return (
-    <div className="space-y-6 pb-20 font-sans">
-      <div className="bg-white rounded-2xl border border-gray-150 shadow-sm p-6">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
-          <div>
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-orange-500" />
-              <h2 className="text-xl font-bold text-gray-900 tracking-tight">AI Match Engine</h2>
-            </div>
-            <p className="text-xs text-gray-500 mt-1 font-medium">
-              Describe the client requirement and get the best expert matches.
-            </p>
+    <div className="max-w-6xl mx-auto space-y-8 pb-12">
+      {/* Central Search Card - Styled with Premium Swyn Brand Gradients & High Contrast Elements */}
+      <div className="bg-gradient-to-br from-white via-white to-swyn-goldLight/20 p-12 rounded-3xl border border-swyn-orange/20 shadow-sm text-center relative overflow-hidden">
+        {/* Subtle grid pattern background overlay */}
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#F05A28 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
+        
+        <div className="max-w-2xl mx-auto space-y-6 relative z-10">
+          <div className="flex justify-center mb-1">
+            <SwynLogo size={40} />
           </div>
+          
+          <p className="text-gray-500 text-sm font-semibold max-w-md mx-auto">
+            Find the perfect expert based on your specific requirements with our high-efficacy AI match system.
+          </p>
 
-          <button
-            onClick={() => setShowHistory(true)}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-200 bg-white hover:bg-gray-50 rounded-xl text-xs font-bold text-gray-600 transition-all shadow-sm"
-          >
-            <History className="w-4 h-4" />
-            Match History
-          </button>
+          <form onSubmit={handleMatch} className="flex flex-col sm:flex-row gap-3 mt-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-swyn-orange/40" />
+              <input 
+                type="text" 
+                placeholder="CEO, CTO, Senior Vice President..."
+                className="w-full pl-12 pr-4 py-3.5 bg-gray-50/50 border border-gray-150 focus:border-swyn-orange/40 focus:bg-white rounded-xl outline-none text-sm text-gray-800 placeholder:text-gray-300 font-medium transition-all shadow-inner"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            <button 
+              type="submit" 
+              disabled={isMatching || !query.trim()}
+              className="bg-swyn-orange hover:bg-swyn-orangeHover text-white px-8 py-3.5 rounded-xl font-bold text-sm tracking-wide transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed shrink-0 shadow-sm"
+            >
+              {isMatching ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Finding...
+                </>
+              ) : (
+                <>
+                  <Search className="w-4 h-4 mr-2" />
+                  Find Matches
+                </>
+              )}
+            </button>
+          </form>
         </div>
 
-        <form onSubmit={handleFindMatches} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            <input
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              placeholder="Client name"
-              className="px-4 py-2.5 bg-gray-50 border border-gray-150 rounded-xl text-xs font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-orange-500/10"
-            />
-            <input
-              value={clientIndustry}
-              onChange={(e) => setClientIndustry(e.target.value)}
-              placeholder="Client industry"
-              className="px-4 py-2.5 bg-gray-50 border border-gray-150 rounded-xl text-xs font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-orange-500/10"
-            />
-            <input
-              value={clientLocation}
-              onChange={(e) => setClientLocation(e.target.value)}
-              placeholder="Client location"
-              className="px-4 py-2.5 bg-gray-50 border border-gray-150 rounded-xl text-xs font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-orange-500/10"
-            />
-            <input
-              value={clientBudget}
-              onChange={(e) => setClientBudget(e.target.value)}
-              placeholder="Budget"
-              className="px-4 py-2.5 bg-gray-50 border border-gray-150 rounded-xl text-xs font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-orange-500/10"
-            />
-            <input
-              value={clientPreferredRole}
-              onChange={(e) => setClientPreferredRole(e.target.value)}
-              placeholder="Preferred role"
-              className="px-4 py-2.5 bg-gray-50 border border-gray-150 rounded-xl text-xs font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-orange-500/10"
-            />
-            <input
-              value={clientContact}
-              onChange={(e) => setClientContact(e.target.value)}
-              placeholder="Client contact"
-              className="px-4 py-2.5 bg-gray-50 border border-gray-150 rounded-xl text-xs font-semibold outline-none focus:bg-white focus:ring-2 focus:ring-orange-500/10"
-            />
-          </div>
-
-          <div>
-            <textarea
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              rows={5}
-              placeholder="Example: Need a senior retail operations expert for scaling D2C stores across India..."
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-150 rounded-xl text-sm font-medium outline-none focus:bg-white focus:ring-2 focus:ring-orange-500/10 resize-none"
-            />
-          </div>
-
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-100 text-red-700 text-xs font-bold rounded-xl flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full md:w-auto px-6 py-3 bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white rounded-xl font-bold text-xs transition-all shadow-sm flex items-center justify-center gap-2"
-          >
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-            {loading ? 'Finding Matches...' : 'Find Best Matches'}
-          </button>
-        </form>
+        {/* Backdrop highlights in real Swyn Colors */}
+        <div className="absolute right-0 top-0 w-72 h-72 bg-swyn-orange rounded-full -mr-24 -mt-24 blur-3xl opacity-10 pointer-events-none"></div>
+        <div className="absolute left-0 bottom-0 w-72 h-72 bg-swyn-gold rounded-full -ml-24 -mb-24 blur-3xl opacity-15 pointer-events-none"></div>
       </div>
 
-      {matches.length > 0 && (
-        <div className="space-y-4">
-          {matches.map((match, index) => (
-            <motion.div
-              key={match.id}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.05 }}
-              className="bg-white rounded-2xl border border-gray-150 shadow-sm p-5"
-            >
-              <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                <div className="flex gap-4">
-                  <div className="w-12 h-12 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-lg shrink-0">
-                    {String(match?.name || "E").charAt(0).toUpperCase()}
-                  </div>
-
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-bold text-gray-900 uppercase tracking-wide">{match.name}</h3>
-                      <span className="px-2.5 py-1 bg-green-50 text-green-700 border border-green-100 rounded-full text-[10px] font-bold">
-                        {match.matchScore || 90}% Match
-                      </span>
-                    </div>
-
-                    <p className="text-xs font-bold text-orange-500 uppercase tracking-wider mt-1">
-                      {match.expertise}
-                    </p>
-
-                    <p className="text-xs text-gray-500 leading-relaxed mt-3 font-medium">
-                      {match.summary}
-                    </p>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-                      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                          Why they fit
-                        </p>
-                        <p className="text-xs font-semibold text-gray-700 leading-relaxed">
-                          {match.whyTheyFit || 'Strong alignment with the client requirement.'}
-                        </p>
-                      </div>
-
-                      <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-                          Potential gaps
-                        </p>
-                        <p className="text-xs font-semibold text-gray-700 leading-relaxed">
-                          {match.potentialGaps || 'No major gaps identified.'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 mt-4 text-[10px] font-bold text-gray-500">
-                      {match.industry && (
-                        <span className="px-2.5 py-1 bg-gray-50 border border-gray-100 rounded-full">
-                          {match.industry}
-                        </span>
-                      )}
-                      {match.experience && (
-                        <span className="px-2.5 py-1 bg-gray-50 border border-gray-100 rounded-full">
-                          {match.experience}
-                        </span>
-                      )}
-                      {match.availability && (
-                        <span className="px-2.5 py-1 bg-gray-50 border border-gray-100 rounded-full">
-                          {match.availability}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleSaveMatch(match)}
-                  disabled={savingId === match.id || savedIds.includes(match.id)}
-                  className="px-4 py-2 bg-gray-900 hover:bg-black disabled:bg-green-600 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shrink-0"
-                >
-                  {savingId === match.id ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : savedIds.includes(match.id) ? (
-                    <CheckCircle className="w-4 h-4" />
-                  ) : (
-                    <Save className="w-4 h-4" />
-                  )}
-                  {savedIds.includes(match.id) ? 'Saved' : 'Save Match'}
-                </button>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      )}
-
+      {/* Target Results Area - Styled exactly like Image 4 */}
       <AnimatePresence>
-        {showHistory && (
-          <div className="fixed inset-0 bg-gray-900/65 backdrop-blur-sm flex items-center justify-end z-50">
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="bg-white h-screen max-w-lg w-full p-6 shadow-2xl border-l border-gray-150 overflow-y-auto"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-lg font-bold text-gray-900">Saved Match History</h3>
-                  <p className="text-xs text-gray-400 font-medium mt-1">
-                    Previously saved expert-client matches.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowHistory(false)}
-                  className="p-2 text-gray-400 hover:text-gray-600 rounded-xl hover:bg-gray-50"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+        {matches.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6 pt-2"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900 tracking-tight">
+                Top matches for "{searchedQuery}"
+              </h3>
+              <span className="text-xs font-semibold text-gray-400 capitalize bg-gray-100 rounded-full px-3 py-1">
+                {matches.length} Results
+              </span>
+            </div>
 
-              {history.length === 0 ? (
-                <div className="py-16 text-center">
-                  <UserCheck className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                  <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">
-                    No saved matches yet
-                  </p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {matches.map((expert) => {
+                const initial = expert.name ? expert.name[0].toUpperCase() : 'E';
+                const matchScore = expert.matchScore || 95;
+                const whyTheyFit = expert.whyTheyFit || "Explicitly aligned executive with proven oversight in the requested domain.";
+                const potentialGaps = expert.potentialGaps || "Expertise is primarily within established enterprises; may require adjustments to agile systems.";
+                const industryText = expert.industry || expert.expertise || "Management & Strategy";
+                const experienceText = expert.experience || expert.availability || "25+ years";
+
+                return (
+                  <motion.div 
+                    key={expert.id}
+                    className="bg-white p-6 rounded-2xl border border-gray-150 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                  >
+                    <div>
+                      {/* Card Header section */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center space-x-3.5">
+                          <div className="w-12 h-12 rounded-full bg-swyn-goldLight border border-swyn-goldMedium/30 flex items-center justify-center text-swyn-goldDark font-bold text-base shadow-sm shrink-0">
+                            {initial}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-gray-900 text-lg leading-snug">{expert.name}</h4>
+                            <p className="text-xs font-bold text-swyn-orange mt-0.5 uppercase tracking-wide">
+                              {expert.expertise}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="bg-gradient-to-r from-emerald-50 to-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-xs rounded-full px-3 py-1 shadow-sm shrink-0">
+                          {matchScore}% Match
+                        </span>
+                      </div>
+
+                      {/* Attribute Badges */}
+                      <div className="flex flex-wrap gap-x-4 gap-y-2 mb-6 border-b border-gray-50 pb-4 text-xs font-semibold text-gray-500">
+                        <div className="flex items-center">
+                          <Building className="w-4 h-4 mr-1.5 text-gray-450" />
+                          <span>{industryText}</span>
+                        </div>
+                        <div className="flex items-center">
+                          <Briefcase className="w-4 h-4 mr-1.5 text-gray-450" />
+                          <span>{experienceText}</span>
+                        </div>
+                      </div>
+
+                      {/* Explanations columns */}
+                      <div className="space-y-4 mb-6">
+                        {/* Why they fit */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center text-emerald-700 text-xs font-bold uppercase tracking-wider">
+                            <Check className="w-4 h-4 mr-1.5 stroke-[3] text-emerald-600" />
+                            WHY THEY FIT
+                          </div>
+                          <div className="border-l-2 border-emerald-500/30 pl-3.5 text-xs text-gray-650 font-medium leading-relaxed">
+                            {whyTheyFit}
+                          </div>
+                        </div>
+
+                        {/* Potential Gaps */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center text-red-650 text-xs font-bold uppercase tracking-wider">
+                            <AlertCircle className="w-4 h-4 mr-1.5 text-red-500" />
+                            POTENTIAL GAPS
+                          </div>
+                          <div className="border-l-2 border-orange-500/30 pl-3.5 text-xs text-gray-650 font-medium leading-relaxed">
+                            {potentialGaps}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer Buttons */}
+                    <div className="flex items-center gap-3 border-t border-gray-50 pt-4 mt-auto">
+                      <button 
+                        onClick={() => setActiveProfile(expert)}
+                        className="flex-1 py-2.5 px-4 text-xs font-bold text-gray-700 border border-gray-200 hover:bg-gray-50 rounded-xl transition-all text-center"
+                      >
+                        View Full Profile
+                      </button>
+                      <button 
+                        onClick={() => openConfirmation(expert)}
+                        className="flex-grow-[1.5] py-2.5 px-4 bg-swyn-orange hover:bg-swyn-orangeHover text-white text-xs font-bold rounded-xl transition-all text-center shadow-sm"
+                      >
+                        Select Expert
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Confirmation Match Record Modal */}
+      <AnimatePresence>
+        {selectedExpert && (
+          <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="bg-white rounded-2xl max-w-2xl w-full p-8 shadow-2xl relative border border-gray-100 overflow-hidden"
+            >
+              <button 
+                onClick={() => setSelectedExpert(null)}
+                className="absolute top-6 right-6 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {saveSuccess ? (
+                <div className="py-16 text-center space-y-4">
+                  <div className="w-20 h-20 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Check className="w-10 h-10 stroke-[3]" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900">Match Confirmed</h3>
+                  <p className="text-gray-500 text-sm max-w-xs mx-auto">This project requirement has been locked to {selectedExpert.name} and saved to your Match History.</p>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {history.map((item) => (
-                    <div key={item.id} className="p-4 border border-gray-150 rounded-2xl bg-gray-50/50">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-bold text-gray-900 text-sm uppercase tracking-wide">
-                            {item.expertName}
-                          </p>
-                          <p className="text-[10px] font-bold text-orange-500 uppercase tracking-wider mt-1">
-                            {item.expertRole}
-                          </p>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
-                      </div>
+                <form onSubmit={handleSaveMatch} className="space-y-6">
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900 leading-tight">Match Expert</h3>
+                    <p className="text-xs font-semibold text-gray-450 uppercase tracking-widest mt-1">Record Match Agreement</p>
+                  </div>
 
-                      <div className="mt-3 space-y-1 text-xs font-semibold text-gray-600">
-                        <p><span className="text-gray-400">Client:</span> {item.clientName}</p>
-                        <p><span className="text-gray-400">Industry:</span> {item.clientIndustry}</p>
-                        <p><span className="text-gray-400">Location:</span> {item.clientLocation}</p>
-                        <p><span className="text-gray-400">Budget:</span> {item.clientBudget}</p>
-                      </div>
-
-                      {item.clientRequirements && (
-                        <p className="mt-3 text-xs text-gray-500 leading-relaxed">
-                          {item.clientRequirements}
-                        </p>
-                      )}
-
-                      <p className="mt-3 text-[10px] text-gray-400 font-bold">
-                        {new Date(item.createdAt || item.timestamp || Date.now()).toLocaleString()}
-                      </p>
+                  <div className="bg-gradient-to-r from-swyn-goldLight to-amber-50/50 p-4 rounded-xl flex items-center space-x-3.5 border border-swyn-goldMedium/20">
+                    <div className="w-12 h-12 bg-swyn-gold border border-swyn-goldMedium/30 text-white flex items-center justify-center font-bold text-base rounded-full">
+                      {selectedExpert.name[0]}
                     </div>
-                  ))}
-                </div>
+                    <div>
+                      <h4 className="font-bold text-gray-900">{selectedExpert.name}</h4>
+                      <p className="text-xs font-bold text-swyn-orange uppercase tracking-tight">{selectedExpert.expertise}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Client Company / Name</label>
+                      <div className="relative">
+                        <Building className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                          type="text" 
+                          required
+                          placeholder="e.g. Acme Corp" 
+                          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-150 focus:outline-none focus:ring-2 focus:ring-swyn-orange focus:border-swyn-orange focus:bg-white rounded-xl text-xs font-semibold transition-all"
+                          value={clientName}
+                          onChange={(e) => setClientName(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Primary Contact (Email/Phone)</label>
+                      <div className="relative">
+                        <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                          type="text" 
+                          required
+                          placeholder="e.g. contact@acme.com" 
+                          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-150 focus:outline-none focus:ring-2 focus:ring-swyn-orange focus:border-swyn-orange focus:bg-white rounded-xl text-xs font-semibold transition-all"
+                          value={clientContact}
+                          onChange={(e) => setClientContact(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Client Industry</label>
+                      <div className="relative">
+                        <Briefcase className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                          type="text" 
+                          placeholder="e.g. Fintech" 
+                          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-150 focus:outline-none focus:ring-2 focus:ring-swyn-orange focus:border-swyn-orange focus:bg-white rounded-xl text-xs font-semibold transition-all"
+                          value={clientIndustry}
+                          onChange={(e) => setClientIndustry(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Budget Allocation</label>
+                      <div className="relative">
+                        <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                          type="text" 
+                          placeholder="e.g. $10,000 / project" 
+                          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-150 focus:outline-none focus:ring-2 focus:ring-swyn-orange focus:border-swyn-orange focus:bg-white rounded-xl text-xs font-semibold transition-all"
+                          value={clientBudget}
+                          onChange={(e) => setClientBudget(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Target Location / Mode</label>
+                      <div className="relative">
+                        <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                          type="text" 
+                          placeholder="e.g. New York / Remote" 
+                          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-150 focus:outline-none focus:ring-2 focus:ring-swyn-orange focus:border-swyn-orange focus:bg-white rounded-xl text-xs font-semibold transition-all"
+                          value={clientLocation}
+                          onChange={(e) => setClientLocation(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Scope / Preferred Role</label>
+                      <div className="relative">
+                        <Zap className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                          type="text" 
+                          placeholder="e.g. Technology Advisory" 
+                          className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-150 focus:outline-none focus:ring-2 focus:ring-swyn-orange focus:border-swyn-orange focus:bg-white rounded-xl text-xs font-semibold transition-all"
+                          value={clientPreferredRole}
+                          onChange={(e) => setClientPreferredRole(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    disabled={isSaving}
+                    className="w-full py-3 bg-swyn-orange hover:bg-swyn-orangeHover text-white font-bold text-sm rounded-xl transition-all shadow-sm disabled:opacity-50 flex items-center justify-center mt-2"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Confirming & Logging...
+                      </>
+                    ) : (
+                      "Lock and Save Match"
+                    )}
+                  </button>
+                </form>
               )}
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      {/* Profile Detail Drawer Card */}
+      <AnimatePresence>
+        {activeProfile && (
+          <div className="fixed inset-0 bg-gray-900/65 backdrop-blur-sm flex items-center justify-end z-50">
+            <motion.div 
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="bg-white h-screen max-w-md w-full p-8 shadow-2xl relative border-l border-gray-100 flex flex-col justify-between overflow-y-auto"
+            >
+              <div>
+                <button 
+                  onClick={() => setActiveProfile(null)}
+                  className="absolute top-6 right-6 p-2 text-gray-400 hover:text-gray-600 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                <div className="space-y-6 pt-4">
+                  <div className="text-center">
+                    <div className="w-20 h-20 bg-swyn-goldLight border border-swyn-goldMedium/35 text-swyn-goldDark font-bold text-2xl rounded-full flex items-center justify-center mx-auto mb-4 italic shadow-sm">
+                      {activeProfile.name ? activeProfile.name[0] : 'E'}
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 leading-tight">{activeProfile.name}</h3>
+                    <p className="text-xs font-bold text-swyn-orange uppercase tracking-widest mt-1">
+                      {activeProfile.expertise}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 pt-2">
+                    <span className="block text-[10px] text-gray-400 font-bold uppercase tracking-wider">Expert Overview</span>
+                    <p className="text-xs text-gray-500 leading-relaxed font-semibold">
+                      {activeProfile.summary}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    <span className="block text-[10px] text-gray-400 font-bold uppercase tracking-wider">Availability</span>
+                    <div className="p-3 bg-gray-50 rounded-xl flex items-center text-xs font-bold text-gray-600">
+                      <Zap className="w-4 h-4 mr-2 text-amber-500 shrink-0" />
+                      {activeProfile.availability || "Mon - Fri, Flexible Schedule"}
+                    </div>
+                  </div>
+
+                  {/* Comprehensive Spreadsheet or Fallback Sheet Details */}
+                  {(() => {
+                    const fields = activeProfile.customFields && Object.keys(activeProfile.customFields).length > 0 
+                      ? activeProfile.customFields 
+                      : {
+                          "Name": activeProfile.name,
+                          "Expertise / Designation": activeProfile.expertise,
+                          "Professional Overview": activeProfile.summary,
+                          "Availability Schedule": activeProfile.availability || "Flexible Schedule",
+                          "Primary Sector / Industry": activeProfile.industry || "General Consulting",
+                          "Experience Level": activeProfile.experience || "20+ Years"
+                        };
+
+                    return (
+                      <div className="space-y-3 pt-5 border-t border-gray-150">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1 px-2 rounded-md bg-orange-50 text-orange-600 font-bold text-[9px] uppercase tracking-wider">Sheet Roster Details</span>
+                          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">All Column Answers</span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2.5">
+                          {Object.entries(fields).map(([key, value]) => {
+                            if (!value || String(value).trim() === "") return null;
+
+                            const strValue = String(value).trim();
+                            const isUrl = strValue.startsWith('http://') || strValue.startsWith('https://') || strValue.startsWith('www.') || strValue.includes('drive.google.com') || strValue.includes('linkedin.com/');
+
+                            return (
+                              <div key={key} className="p-3 bg-gray-50/60 border border-gray-100 rounded-xl transition-all hover:bg-gray-50 text-left">
+                                <span className="block text-[10px] text-orange-500 font-bold uppercase tracking-wide mb-1">
+                                  {key}
+                                </span>
+                                {isUrl ? (
+                                  <a 
+                                    href={strValue.startsWith('http') ? strValue : `https://${strValue}`}
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 break-words leading-relaxed block whitespace-pre-line underline animate-fade-in text-left"
+                                  >
+                                    {strValue}
+                                  </a>
+                                ) : (
+                                  <span className="text-xs font-semibold text-gray-800 break-words leading-relaxed block whitespace-pre-line animate-fade-in text-left">
+                                    {strValue}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              <div className="border-t border-gray-50 pt-4 mt-8 flex gap-3">
+                <button 
+                  onClick={() => {
+                    const pr = activeProfile;
+                    setActiveProfile(null);
+                    openConfirmation(pr);
+                  }}
+                  className="w-full py-3 bg-swyn-orange hover:bg-swyn-orangeHover text-white font-bold text-xs rounded-xl transition-all shadow-sm text-center"
+                >
+                  Record Match Agreement
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {error && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="p-6 bg-red-50 border border-red-100 rounded-2xl flex items-center justify-center text-red-650 text-xs font-bold"
+        >
+          <AlertCircle className="w-4 h-4 mr-2 shrink-0" />
+          {error}
+        </motion.div>
+      )}
     </div>
   );
 };
