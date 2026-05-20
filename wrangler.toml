@@ -1,0 +1,10 @@
+name = "swynmatch"
+compatibility_date = "2024-05-20"
+compatibility_flags = ["nodejs_compat"]
+
+# Point to your built server or worker entrypoint if you have one.
+# For full-stack express apps, Cloudflare may need specific adapters.
+# main = "dist/server.cjs"
+
+[assets]
+directory = "dist"
