@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Users, UserPlus, Trash2, ShieldCheck, Loader2, AlertCircle, CheckCircle2, Key, Mail, Search } from 'lucide-react';
+import { authFetch } from '../lib/api';
 
 interface User {
   uid: string;
@@ -23,7 +24,7 @@ export const AdminDashboard: React.FC = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/admin/users', {
+      const response = await authFetch('/api/admin/users', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) throw new Error('Failed to fetch users');
