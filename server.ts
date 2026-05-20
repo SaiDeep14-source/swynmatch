@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import path from "path";
 import http from "http";
 import { Server as SocketIOServer } from "socket.io";
@@ -7,7 +8,6 @@ import { GoogleGenAI } from "@google/genai";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import fs from "fs";
-import cors from 'cors';
 
 // Defensively load firebase configuration
 let firebaseConfig: any = {};
@@ -149,18 +149,20 @@ async function loadAllExperts(): Promise<any[]> {
 
 async function startServer() {
   const app = express();
-  app.use(cors({
-  origin: [
-    'https://swynmatch.shaamlie.workers.dev',
-    'https://swynmatch.onrender.com'
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
 
-app.options('*', cors());
-  const PORT = 3000;
+  app.use(cors({
+    origin: [
+      "https://swynmatch.shaamlie.workers.dev",
+      "https://swynmatch.onrender.com"
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
+  }));
+
+  app.options("*", cors());
+
+  const PORT = process.env.PORT || 3000;
   const server = http.createServer(app);
   const io = new SocketIOServer(server, { cors: { origin: "*" } });
 
@@ -630,7 +632,9 @@ Return ONLY the raw JSON array. Do not include markdown code block formatting or
         const customFields: Record<string, string> = {};
         originalHeaders.forEach((headerName, index) => {
           if (cells[index] !== undefined && cells[index] !== null) {
-            customFields[headerName.trim()] = cells[index].trim();
+            // Firestore fields cannot contain ~ * / [ ] .
+            const sanitizedKey = headerName.trim().replace(/[.~*/\[\]]/g, "-").replace(/\s+/g, " ");
+            customFields[sanitizedKey] = cells[index].trim();
           }
         });
         
