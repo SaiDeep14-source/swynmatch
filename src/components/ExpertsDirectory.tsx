@@ -46,7 +46,7 @@ const ExpertsDirectory: React.FC = () => {
 
   // Sheets Sync Panels
   const [showSyncPanel, setShowSyncPanel] = useState(false);
-  const [sheetUrl, setSheetUrl] = useState('');
+  const [sheetUrls, setSheetUrls] = useState<string[]>(['']);
   const [syncing, setSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -101,7 +101,10 @@ const ExpertsDirectory: React.FC = () => {
       .then(res => res.json())
       .then(data => {
         if (data && data.url) {
-          setSheetUrl(data.url);
+          const urls = data.url.split(',').map((u: string) => u.trim()).filter(Boolean);
+          if (urls.length > 0) {
+            setSheetUrls(urls);
+          }
         }
       })
       .catch((e) => console.warn('Failed to load stored sheet config:', e));
@@ -110,7 +113,9 @@ const ExpertsDirectory: React.FC = () => {
 
   const handleSyncSheets = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sheetUrl.trim()) return;
+    const validUrls = sheetUrls.map(u => u.trim()).filter(Boolean);
+    if (validUrls.length === 0) return;
+    const joinedUrl = validUrls.join(',');
 
     setSyncing(true);
     setSyncError(null);
@@ -124,7 +129,7 @@ const ExpertsDirectory: React.FC = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ url: sheetUrl })
+        body: JSON.stringify({ url: joinedUrl })
       });
 
       const data = await response.json();
@@ -138,7 +143,7 @@ const ExpertsDirectory: React.FC = () => {
         data.experts.forEach((exp: any) => {
           batch.set(doc(db, "experts", exp.id), exp);
         });
-        batch.set(doc(db, "config", "sheet_config"), { url: sheetUrl, lastSynced: new Date().toISOString() });
+        batch.set(doc(db, "config", "sheet_config"), { url: joinedUrl, lastSynced: new Date().toISOString() });
         await batch.commit();
       } catch (dbErr) {
         console.warn("Client side firestore update warning:", dbErr);
@@ -423,22 +428,49 @@ const ExpertsDirectory: React.FC = () => {
                 <p className="text-xs text-gray-400 mt-1 font-medium">Link your spreadsheet parameters to refresh expert rosters into the core application database.</p>
               </div>
 
-              <form onSubmit={handleSyncSheets} className="space-y-3">
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide pl-1">Target Worksheet CSV/Export Link</label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      required
-                      placeholder="e.g. https://docs.google.com/..., https://docs.google.com/..."
-                      className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-150 rounded-xl focus:bg-white focus:ring-2 focus:ring-swyn-orange/20 focus:border-swyn-orange outline-none transition-all text-xs font-semibold"
-                      value={sheetUrl}
-                      onChange={(e) => setSheetUrl(e.target.value)}
-                    />
+              <form onSubmit={handleSyncSheets} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wide pl-1">Target Worksheets</label>
+                  
+                  {sheetUrls.map((url, index) => (
+                    <div key={index} className="flex gap-2">
+                      <input 
+                        type="text" 
+                        required={index === 0}
+                        placeholder={"e.g. https://docs.google.com/spreadsheets/d/..."}
+                        className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-150 rounded-xl focus:bg-white focus:ring-2 focus:ring-swyn-orange/20 focus:border-swyn-orange outline-none transition-all text-xs font-semibold"
+                        value={url}
+                        onChange={(e) => {
+                          const newUrls = [...sheetUrls];
+                          newUrls[index] = e.target.value;
+                          setSheetUrls(newUrls);
+                        }}
+                      />
+                      {sheetUrls.length > 1 && (
+                        <button 
+                          type="button"
+                          onClick={() => setSheetUrls(sheetUrls.filter((_, i) => i !== index))}
+                          className="px-3 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  
+                  <div className="flex justify-between items-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setSheetUrls([...sheetUrls, ''])}
+                      className="text-xs font-bold text-swyn-orange hover:text-swyn-orangeHover transition-colors flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Another Sheet
+                    </button>
                     <button 
                       type="submit"
-                      disabled={syncing || !sheetUrl.trim()}
-                      className="px-5 bg-swyn-orange hover:bg-swyn-orangeHover disabled:opacity-50 text-white rounded-xl font-semibold text-xs transition-all flex items-center gap-1.5 shrink-0"
+                      disabled={syncing || !sheetUrls.some(u => u.trim())}
+                      className="px-5 py-2.5 bg-swyn-orange hover:bg-swyn-orangeHover disabled:opacity-50 text-white rounded-xl font-semibold text-xs transition-all flex items-center gap-1.5 shrink-0"
                     >
                       {syncing ? (
                         <>
@@ -446,7 +478,7 @@ const ExpertsDirectory: React.FC = () => {
                           Indexing...
                         </>
                       ) : (
-                        "Sync Now"
+                        "Sync All Sheets"
                       )}
                     </button>
                   </div>
@@ -761,27 +793,31 @@ const ExpertsDirectory: React.FC = () => {
                             if (!value || String(value).trim() === "") return null;
 
                             const strValue = String(value).trim();
-                            const isUrl = strValue.startsWith('http://') || strValue.startsWith('https://') || strValue.startsWith('www.') || strValue.includes('drive.google.com') || strValue.includes('linkedin.com/');
+                            const Linkify = ({ text }: { text: string }) => {
+                              const urlRegex = /(https?:\/\/[^\s]+)/g;
+                              const parts = text.split(urlRegex);
+                              
+                              return (
+                                <span className="text-xs font-semibold text-gray-800 break-words leading-relaxed block whitespace-pre-line text-left">
+                                  {parts.map((part, i) => 
+                                    part.match(urlRegex) ? (
+                                      <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
+                                        {part}
+                                      </a>
+                                    ) : (
+                                      <span key={i}>{part}</span>
+                                    )
+                                  )}
+                                </span>
+                              );
+                            };
 
                             return (
                               <div key={key} className="p-3 bg-gray-50/60 border border-gray-100 rounded-xl transition-all hover:bg-gray-50 text-left">
                                 <span className="block text-[10px] text-orange-500 font-bold uppercase tracking-wide mb-1">
                                   {key}
                                 </span>
-                                {isUrl ? (
-                                  <a 
-                                    href={strValue.startsWith('http') ? strValue : `https://${strValue}`}
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
-                                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 break-words leading-relaxed block whitespace-pre-line underline"
-                                  >
-                                    {strValue}
-                                  </a>
-                                ) : (
-                                  <span className="text-xs font-semibold text-gray-800 break-words leading-relaxed block whitespace-pre-line">
-                                    {strValue}
-                                  </span>
-                                )}
+                                <Linkify text={strValue} />
                               </div>
                             );
                           })}

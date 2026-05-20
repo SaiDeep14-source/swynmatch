@@ -84,7 +84,7 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // --- Messages Collection ---
+    // --- Messages Collection (Legacy) ---
     match /messages/{messageId} {
       // Allow reading history if signed in
       allow list: if isSignedIn();
@@ -94,6 +94,18 @@ service cloud.firestore {
       allow create: if isSignedIn() && isValidMessage(incoming());
       
       // Messages are immutable
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // --- Chats Collection (Multi-Channel) ---
+    match /chats/{channelId}/messages/{messageId} {
+      allow read: if isSignedIn() && (channelId == 'global' || channelId.matches('.*' + request.auth.uid + '.*'));
+      
+      allow create: if isSignedIn() && 
+                    (channelId == 'global' || channelId.matches('.*' + request.auth.uid + '.*')) && 
+                    isValidMessage(incoming());
+                    
       allow update: if false;
       allow delete: if isAdmin();
     }

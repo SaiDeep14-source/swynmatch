@@ -14,14 +14,43 @@ interface ChatMessage {
   mine: boolean;
 }
 
+interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+}
+
 const Chat: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [searchUserQuery, setSearchUserQuery] = useState('');
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [activeChannel, setActiveChannel] = useState<{type: 'global'|'dm', id: string, name: string}>({type: 'global', id: 'global', name: 'Global Chat'});
 
   useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('/api/users', {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setUsers(data);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch users", err);
+      }
+    };
+    fetchUsers();
+  }, []);
+
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    const channelId = activeChannel.type === 'global' ? 'global' : [currentUser?.uid || 'temp', activeChannel.id].sort().join('_');
+    
     const q = query(
-      collection(db, 'messages'),
+      collection(db, 'chats', channelId, 'messages'),
       orderBy('timestamp', 'asc')
     );
 
@@ -32,7 +61,7 @@ const Chat: React.FC = () => {
         const data = doc.data();
         let timeStr = "";
         if (data.timestamp) {
-           const d = data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+           const d = typeof data.timestamp === 'number' ? new Date(data.timestamp) : (data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp));
            timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         } else {
            timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -40,9 +69,9 @@ const Chat: React.FC = () => {
 
         msgs.push({
           id: doc.id,
-          sender: data.senderName,
+          sender: data.senderName || 'User',
           senderEmail: data.senderEmail,
-          senderInitials: data.senderName.substring(0,2).toUpperCase(),
+          senderInitials: (data.senderName ? data.senderName.substring(0,2) : "U").toUpperCase(),
           text: data.content,
           time: timeStr,
           mine: data.senderEmail === currentUserEmail
@@ -54,7 +83,7 @@ const Chat: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [activeChannel]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,7 +95,8 @@ const Chat: React.FC = () => {
 
     if (user) {
       try {
-        await addDoc(collection(db, 'messages'), {
+        const channelId = activeChannel.type === 'global' ? 'global' : [user.uid, activeChannel.id].sort().join('_');
+        await addDoc(collection(db, 'chats', channelId, 'messages'), {
           senderEmail: user.email,
           senderName: user.displayName || user.email?.split('@')[0] || "User",
           content: msgText,
@@ -104,27 +134,44 @@ const Chat: React.FC = () => {
           <div className="space-y-2">
             <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2">CHANNELS</h4>
             <button 
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-orange-50 text-orange-500 font-bold text-xs shadow-sm transition-all text-left"
+              onClick={() => setActiveChannel({type: 'global', id: 'global', name: 'Global Chat'})}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-xs shadow-sm transition-all text-left ${activeChannel.id === 'global' ? 'bg-orange-50 text-orange-500' : 'text-gray-500 hover:bg-gray-50'}`}
             >
-              <div className="w-6 h-6 rounded-lg bg-orange-100 flex items-center justify-center text-orange-500 shrink-0">
+              <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${activeChannel.id === 'global' ? 'bg-orange-100 text-orange-500' : 'bg-gray-100 text-gray-500'}`}>
                 <Hash className="w-3.5 h-3.5" />
               </div>
               <span className="flex-1 truncate">Global Chat</span>
-              <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0"></span>
+              {activeChannel.id === 'global' && <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0"></span>}
             </button>
           </div>
 
           {/* Direct Messages Contact Group */}
           <div className="space-y-2">
             <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2">DIRECT MESSAGES</h4>
-            <button 
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-gray-500 hover:bg-gray-50 font-bold text-xs transition-style text-left border border-transparent"
-            >
-              <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-455 shrink-0 text-[10px] uppercase font-bold">
-                us
-              </div>
-              <span className="flex-1 truncate">user</span>
-            </button>
+            {users
+              .filter(u => {
+                const displayName = u.displayName || u.email || "User";
+                const email = u.email || "";
+                return displayName.toLowerCase().includes(searchUserQuery.toLowerCase()) || 
+                       email.toLowerCase().includes(searchUserQuery.toLowerCase());
+              })
+              .map(u => {
+                const isSelected = activeChannel.id === u.uid;
+                const displayName = u.displayName || u.email || "User";
+                return (
+                  <button 
+                    key={u.uid}
+                    onClick={() => setActiveChannel({type: 'dm', id: u.uid, name: displayName})}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold text-xs transition-style text-left border border-transparent ${isSelected ? 'bg-orange-50 text-orange-500' : 'text-gray-500 hover:bg-gray-50'}`}
+                  >
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] uppercase font-bold ${isSelected ? 'bg-orange-100 text-orange-500' : 'bg-gray-100 text-gray-500'}`}>
+                      {displayName.substring(0, 2)}
+                    </div>
+                    <span className="flex-1 truncate">{displayName}</span>
+                    {isSelected && <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0"></span>}
+                  </button>
+                );
+            })}
           </div>
         </div>
       </div>
@@ -135,7 +182,10 @@ const Chat: React.FC = () => {
         {/* Header toolbar */}
         <div className="px-8 py-5 border-b border-gray-150 bg-white flex items-center justify-between">
           <div>
-            <h3 className="font-bold text-gray-900 text-sm leading-tight"># Global Chat</h3>
+            <h3 className="font-bold text-gray-900 text-sm leading-tight">
+              {activeChannel.type === 'global' ? '# ' : '@ '}
+              {activeChannel.name}
+            </h3>
             <p className="text-[10px] text-gray-400 font-bold flex items-center mt-0.5">
               <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5 animate-pulse"></span>
               Active Now
@@ -196,7 +246,7 @@ const Chat: React.FC = () => {
           <form onSubmit={handleSend} className="flex gap-2">
             <input 
               type="text" 
-              placeholder="Message #global..." 
+              placeholder={activeChannel.type === 'global' ? "Message #global..." : `Message @${activeChannel.name}...`}
               className="flex-1 px-4 py-2.5 bg-gray-50 text-xs font-semibold border border-gray-150 focus:border-orange-500 rounded-xl outline-none focus:bg-white placeholder:text-gray-400 transition-all"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}

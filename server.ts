@@ -245,6 +245,33 @@ async function startServer() {
     next();
   };
 
+  apiRouter.get("/users", authenticate, async (req: any, res) => {
+    try {
+      const fAuth = getFirebaseAuth();
+      if (!fAuth) {
+        return res.json([{ uid: "local-user-dev", email: "saideepalahari14@gmail.com", disabled: false }]);
+      }
+      let allUsers: any[] = [];
+      let pageToken: string | undefined = undefined;
+      do {
+        const listUsersResult = await fAuth.listUsers(1000, pageToken);
+        allUsers = allUsers.concat(listUsersResult.users);
+        pageToken = listUsersResult.pageToken;
+      } while (pageToken);
+      
+      const users = allUsers.map(u => ({
+        uid: u.uid,
+        email: u.email,
+        disabled: u.disabled,
+        displayName: u.displayName || u.email?.split('@')[0] || "User"
+      }));
+      res.json(users);
+    } catch (err: any) {
+      logAuthWarning("Failed to list users from Firebase Admin for chat directory", err);
+      res.json([{ uid: "local-user-dev", email: "saideepalahari14@gmail.com", disabled: false, displayName: "Local user" }]);
+    }
+  });
+
   apiRouter.get("/experts", async (req, res) => {
     try {
       const data = await loadAllExperts();
@@ -336,8 +363,17 @@ async function startServer() {
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
       });
 
+      const minimalExperts = experts.map((e: any) => {
+        // Build a lean representation to save tokens and prevent rate limit errors.
+        const name = e.name || e.Name || (e.customFields && e.customFields["Name"]);
+        const expertise = e.expertise || e.role || (e.customFields && e.customFields["Expertise"]);
+        const summary = e.summary || (e.customFields && e.customFields["Summary"]);
+        const skills = e.skills || (e.customFields && e.customFields["Skills"]);
+        return { id: e.id, name, expertise, summary, skills };
+      });
+
       const prompt = `You are a professional matching engine assistant for SWYNMatch.
-Match the user request: "${query}" to at most 3 experts from this list: ${JSON.stringify(experts)}.
+Match the user request: "${query}" to at most 3 experts from this list: ${JSON.stringify(minimalExperts)}.
 
 For each of the matched experts, analyze why they fit the request and list any potential gaps they might have for the request.
 Return a JSON array of objects with this EXACT structure:
@@ -351,24 +387,63 @@ Return a JSON array of objects with this EXACT structure:
 ]
 Return ONLY the raw JSON array. Do not include markdown code block formatting or any other text.`;
       
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json"
+      let text = "[]";
+      let retries = 3;
+      let lastError = null;
+
+      while (retries > 0) {
+        try {
+          const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json"
+            }
+          });
+          text = response.text || "[]";
+          break; // success
+        } catch (error: any) {
+          lastError = error;
+          if (error?.status === 503 || error?.status === 429 || error?.toString().includes("503") || error?.toString().includes("429")) {
+            console.warn(`Gemini API error, retrying... (${retries} retries left)`);
+            retries--;
+            await new Promise(res => setTimeout(res, 2000)); // wait 2s before retry
+          } else {
+            console.error("Non-retriable Gemini error:", error);
+            break;
+          }
         }
-      });
-      
-      const text = response.text || "[]";
+      }
+
       let parsed = [];
-      try {
-        parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-      } catch (err) {
-        console.error("Failed to parse JSON response from Gemini, raw text:", text);
-        // Fallback: extract IDs using regex or defaults
-        const matchedIds = (text.match(/"id"\s*:\s*"([a-zA-Z0-9-_]+)"/g) || [])
-          .map(m => m.split(":")[1].replace(/"/g, "").trim());
-        parsed = matchedIds.map(id => ({ id, matchScore: 95, whyTheyFit: "Matched based on professional role alignment.", potentialGaps: "No obvious gaps identified." }));
+      
+      if (text === "[]" && lastError) {
+        console.warn("Falling back to local keyword matching due to API error.");
+        const keywords = query.toLowerCase().split(/\s+/).filter((k: string) => k.length > 3);
+        const scoredExperts = experts.map((e: any) => {
+          let score = 50;
+          const searchStr = JSON.stringify(e).toLowerCase();
+          keywords.forEach((kw: string) => {
+            if (searchStr.includes(kw)) score += 15;
+          });
+          return {
+            id: e.id,
+            matchScore: Math.min(99, score),
+            whyTheyFit: "Matched via keyword fallback system because the AI engine is currently unavailable (rate limited).",
+            potentialGaps: "Fallback matching lacks deeper contextual analysis. Please try again later for AI-driven insights."
+          };
+        });
+        parsed = scoredExperts.sort((a: any, b: any) => b.matchScore - a.matchScore).slice(0, 3);
+      } else {
+        try {
+          parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+        } catch (err) {
+          console.error("Failed to parse JSON response from Gemini, raw text:", text);
+          // Fallback: extract IDs using regex or defaults
+          const matchedIds = (text.match(/"id"\s*:\s*"([a-zA-Z0-9-_]+)"/g) || [])
+            .map((m: any) => m.split(":")[1].replace(/"/g, "").trim());
+          parsed = matchedIds.map((id: string) => ({ id, matchScore: 95, whyTheyFit: "Matched based on professional role alignment.", potentialGaps: "No obvious gaps identified." }));
+        }
       }
 
       const matches = [];
@@ -434,11 +509,11 @@ Return ONLY the raw JSON array. Do not include markdown code block formatting or
     const mergedMap = new Map();
     localMatches.forEach((m: any) => {
       const key = m.id || `${m.expertId}-${m.createdAt || m.timestamp}`;
-      mergedMap.set(key, m);
+      mergedMap.set(key, { ...m, id: m.id || key });
     });
     dbMatches.forEach((m: any) => {
       const key = m.id || `${m.expertId}-${m.createdAt || m.timestamp}`;
-      mergedMap.set(key, m);
+      mergedMap.set(key, { ...m, id: key });
     });
 
     const mergedList = Array.from(mergedMap.values()).sort((a: any, b: any) => {
@@ -448,6 +523,61 @@ Return ONLY the raw JSON array. Do not include markdown code block formatting or
     });
 
     res.json(mergedList);
+  });
+
+  apiRouter.delete("/matches", authenticate, async (req: any, res) => {
+    try {
+      const fDb = getFirestoreDb();
+      if (fDb) {
+        try {
+          const snapshot = await fDb.collection("matches").where("userId", "==", req.user.uid).get();
+          const batch = fDb.batch();
+          snapshot.docs.forEach((doc) => {
+            batch.delete(doc.ref);
+          });
+          await batch.commit();
+        } catch (err: any) {
+          logFirestoreWarning("Firestore clear matches warning:", err);
+        }
+      }
+      
+      const historyPath = path.join(process.cwd(), "matches.json");
+      if (fs.existsSync(historyPath)) {
+        let history = JSON.parse(fs.readFileSync(historyPath, "utf8"));
+        history = history.filter((m: any) => m.userId !== req.user.uid && m.userId !== "local-user-dev");
+        fs.writeFileSync(historyPath, JSON.stringify(history, null, 2));
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  apiRouter.delete("/matches/:id", authenticate, async (req: any, res) => {
+    const id = req.params.id;
+    try {
+      const fDb = getFirestoreDb();
+      if (fDb) {
+        try {
+          await fDb.collection("matches").doc(id).delete();
+        } catch (err: any) {
+          logFirestoreWarning("Firestore delete warning:", err);
+        }
+      }
+      
+      const historyPath = path.join(process.cwd(), "matches.json");
+      if (fs.existsSync(historyPath)) {
+        let history = JSON.parse(fs.readFileSync(historyPath, "utf8"));
+        history = history.filter((m: any) => {
+          const mId = m.id || `${m.expertId}-${m.createdAt || m.timestamp}`;
+          return mId !== id;
+        });
+        fs.writeFileSync(historyPath, JSON.stringify(history, null, 2));
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   apiRouter.post("/matches/save", authenticate, async (req: any, res) => {
@@ -611,9 +741,12 @@ Return ONLY the raw JSON array. Do not include markdown code block formatting or
             
             const customFields: Record<string, string> = {};
             originalHeaders.forEach((headerName, index) => {
-              if (cells[index] !== undefined && cells[index] !== null) {
+              const cellValue = cells[index];
+              if (cellValue !== undefined && cellValue !== null && cellValue.trim() !== "") {
                 const sanitizedKey = headerName.trim().replace(/[.~*/\[\]]/g, "-").replace(/\s+/g, " ");
-                customFields[sanitizedKey] = cells[index].trim();
+                if (sanitizedKey) {
+                  customFields[sanitizedKey] = cellValue.trim();
+                }
               }
             });
             

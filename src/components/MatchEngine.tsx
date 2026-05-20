@@ -549,27 +549,31 @@ const MatchEngine: React.FC = () => {
                             if (!value || String(value).trim() === "") return null;
 
                             const strValue = String(value).trim();
-                            const isUrl = strValue.startsWith('http://') || strValue.startsWith('https://') || strValue.startsWith('www.') || strValue.includes('drive.google.com') || strValue.includes('linkedin.com/');
+                            const Linkify = ({ text }: { text: string }) => {
+                              const urlRegex = /(https?:\/\/[^\s]+)/g;
+                              const parts = text.split(urlRegex);
+                              
+                              return (
+                                <span className="text-xs font-semibold text-gray-800 break-words leading-relaxed block whitespace-pre-line animate-fade-in text-left">
+                                  {parts.map((part, i) => 
+                                    part.match(urlRegex) ? (
+                                      <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
+                                        {part}
+                                      </a>
+                                    ) : (
+                                      <span key={i}>{part}</span>
+                                    )
+                                  )}
+                                </span>
+                              );
+                            };
 
                             return (
                               <div key={key} className="p-3 bg-gray-50/60 border border-gray-100 rounded-xl transition-all hover:bg-gray-50 text-left">
                                 <span className="block text-[10px] text-orange-500 font-bold uppercase tracking-wide mb-1">
                                   {key}
                                 </span>
-                                {isUrl ? (
-                                  <a 
-                                    href={strValue.startsWith('http') ? strValue : `https://${strValue}`}
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
-                                    className="text-xs font-semibold text-blue-600 hover:text-blue-800 break-words leading-relaxed block whitespace-pre-line underline animate-fade-in text-left"
-                                  >
-                                    {strValue}
-                                  </a>
-                                ) : (
-                                  <span className="text-xs font-semibold text-gray-800 break-words leading-relaxed block whitespace-pre-line animate-fade-in text-left">
-                                    {strValue}
-                                  </span>
-                                )}
+                                <Linkify text={strValue} />
                               </div>
                             );
                           })}
