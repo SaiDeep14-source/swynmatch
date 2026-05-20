@@ -440,7 +440,7 @@ const ExpertsDirectory: React.FC = () => {
                 </tr>
               ) : (
                 filteredExperts.map((expert) => {
-                  const initial = expert.name ? expert.name[0].toUpperCase() : 'E';
+                  const initial = String(expert?.name || "E").charAt(0).toUpperCase();
                   const industryVal = expert.industry || expert.expertise || 'Consulting';
                   const experienceVal = expert.experience || '20–25 years';
 
@@ -631,7 +631,7 @@ const ExpertsDirectory: React.FC = () => {
                 <div className="space-y-6 pt-4">
                   <div className="text-center">
                     <div className="w-20 h-20 bg-orange-100/70 border border-orange-200/20 text-orange-600 font-bold text-2xl rounded-full flex items-center justify-center mx-auto mb-4 italic shadow-sm">
-                      {activeProfile.name ? activeProfile.name[0] : 'E'}
+                      {String(activeProfile?.name || "E").charAt(0).toUpperCase()}
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 leading-tight uppercase tracking-wide">{activeProfile.name}</h3>
                     <p className="text-xs font-bold text-orange-500 uppercase tracking-widest mt-1">
