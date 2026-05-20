@@ -20,7 +20,7 @@ import {
   ChevronDown,
   Trash2
 } from 'lucide-react';
-import { authFetch } from '../lib/api';
+import { authfetch } from '../lib/api';
 
 interface Expert {
   id: string;
@@ -63,7 +63,7 @@ const ExpertsDirectory: React.FC = () => {
 
   const fetchExperts = () => {
     setLoading(true);
-    authFetch('/api/experts')
+    authfetch('/api/experts')
       .then(res => res.json())
       .then(data => {
         setExperts(data);
@@ -75,7 +75,7 @@ const ExpertsDirectory: React.FC = () => {
   useEffect(() => {
     fetchExperts();
 
-    authFetch('/api/sheets/config')
+    authfetch('/api/sheets/config')
       .then(res => res.json())
       .then(data => {
         if (data && data.url) {
@@ -94,7 +94,7 @@ const ExpertsDirectory: React.FC = () => {
     setSyncSuccess(null);
 
     try {
-      const response = await authFetch('/api/sheets/sync', {
+      const response = await authfetch('/api/sheets/sync', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -122,7 +122,7 @@ const ExpertsDirectory: React.FC = () => {
   const handleClearAll = async () => {
     try {
       setLoading(true);
-      const response = await authFetch('/api/experts/clear', {
+      const response = await authfetch('/api/experts/clear', {
         method: 'POST'
       });
       if (response.ok) {
@@ -159,7 +159,7 @@ const ExpertsDirectory: React.FC = () => {
 
       setExperts(prev => [newRecord, ...prev]);
 
-      const response = await authFetch('/api/experts/add', {
+      const response = await authfetch('/api/experts/add', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
