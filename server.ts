@@ -7,6 +7,7 @@ import { GoogleGenAI } from "@google/genai";
 import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import fs from "fs";
+import cors from 'cors';
 
 // Defensively load firebase configuration
 let firebaseConfig: any = {};
@@ -119,6 +120,17 @@ async function loadAllExperts(): Promise<any[]> {
 
 async function startServer() {
   const app = express();
+  app.use(cors({
+  origin: [
+    'https://swynmatch.shaamlie.workers.dev',
+    'https://swynmatch.onrender.com'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
+app.options('*', cors());
   const PORT = 3000;
   const server = http.createServer(app);
   const io = new SocketIOServer(server, { cors: { origin: "*" } });
