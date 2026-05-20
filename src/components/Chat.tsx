@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, Send, User, Search, Hash } from 'lucide-react';
+import { db, auth } from '../lib/firebase';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface ChatMessage {
-  id: number;
+  id: string | number;
   sender: string;
+  senderEmail: string;
   senderInitials: string;
   text: string;
   time: string;
@@ -16,37 +19,63 @@ const Chat: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [searchUserQuery, setSearchUserQuery] = useState('');
 
-  const handleSend = (e: React.FormEvent) => {
+  useEffect(() => {
+    const q = query(
+      collection(db, 'messages'),
+      orderBy('timestamp', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs: ChatMessage[] = [];
+      const currentUserEmail = auth.currentUser?.email || 'saideepalahari14@gmail.com';
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        let timeStr = "";
+        if (data.timestamp) {
+           const d = data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp);
+           timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } else {
+           timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        msgs.push({
+          id: doc.id,
+          sender: data.senderName,
+          senderEmail: data.senderEmail,
+          senderInitials: data.senderName.substring(0,2).toUpperCase(),
+          text: data.content,
+          time: timeStr,
+          mine: data.senderEmail === currentUserEmail
+        });
+      });
+      setMessages(msgs);
+    }, (error) => {
+      console.warn("Firestore chat listening error:", error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim()) return;
 
-    const now = new Date();
-    const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    const userMessage: ChatMessage = {
-      id: Date.now(),
-      sender: 'You',
-      senderInitials: 'YO',
-      text: inputText,
-      time: timeString,
-      mine: true
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    const user = auth.currentUser;
+    const msgText = inputText;
     setInputText('');
 
-    // Simulate polite automated response after a brief delay
-    setTimeout(() => {
-      const responseMessage: ChatMessage = {
-        id: Date.now() + 1,
-        sender: 'SwynMatch Bot',
-        senderInitials: 'SB',
-        text: "Direct messaging and channels are currently in connection mode. Your message was recorded successfully in our active log.",
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        mine: false
-      };
-      setMessages(prev => [...prev, responseMessage]);
-    }, 1200);
+    if (user) {
+      try {
+        await addDoc(collection(db, 'messages'), {
+          senderEmail: user.email,
+          senderName: user.displayName || user.email?.split('@')[0] || "User",
+          content: msgText,
+          timestamp: Date.now()
+        });
+      } catch (err) {
+        console.error("Failed to send message", err);
+      }
+    }
   };
 
   return (
