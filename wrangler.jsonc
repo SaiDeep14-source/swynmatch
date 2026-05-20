@@ -5,7 +5,8 @@
   "observability": {
     "enabled": true
   },
-  "assets": {
+[assets]
+directory = "./dist"
     "not_found_handling": "single-page-application"
   },
   "compatibility_flags": [
