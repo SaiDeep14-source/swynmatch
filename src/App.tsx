@@ -1,270 +1,232 @@
 import React, { useState, useEffect } from 'react';
-import { Search, UserCircle, Briefcase, ChevronRight, FileText, History, LogOut, Home, MessageSquare } from 'lucide-react';
+import { 
+  Search, 
+  History, 
+  LogOut, 
+  Home, 
+  MessageSquare, 
+  ShieldCheck, 
+  Server, 
+  User, 
+  Loader2, 
+  Briefcase, 
+  ChevronRight,
+  Sparkles,
+  Target,
+  Zap
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { AdminDashboard } from './components/AdminDashboard';
+import { Auth } from './components/Auth';
 import ExpertsDirectory from './components/ExpertsDirectory';
 import MatchEngine from './components/MatchEngine';
-import MatchHistory from './components/MatchHistory';
-import Auth from './components/Auth';
-import Dashboard from './components/Dashboard';
 import Chat from './components/Chat';
 import SwynLogo from './components/SwynLogo';
-import { EnvDashboard } from './components/EnvDashboard';
+import Dashboard from './components/Dashboard';
+import MatchHistory from './components/MatchHistory';
 import { auth } from './lib/firebase';
-import { signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'find' | 'directory' | 'history' | 'chat' | 'env'>('dashboard');
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [userEmail, setUserEmail] = useState('');
+type TabType = 'dashboard' | 'find' | 'directory' | 'history' | 'chat' | 'admin';
+
+const App: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Listen for Firebase auth state changes
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         const token = await user.getIdToken();
-        localStorage.setItem('auth_token', token);
-        localStorage.setItem('user_email', user.email || '');
-        setUserEmail(user.email || '');
-        setIsAuthenticated(true);
+        localStorage.setItem('token', token);
+        setUser(user);
       } else {
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('user_email');
-        setIsAuthenticated(false);
-        setUserEmail('');
+        localStorage.removeItem('token');
+        setUser(null);
       }
-      setIsLoadingAuth(false);
+      setLoading(false);
     });
-
     return () => unsubscribe();
   }, []);
 
-  const handleLogin = (token: string, email: string) => {
-    localStorage.setItem('auth_token', token);
-    if (email) {
-      localStorage.setItem('user_email', email);
-      setUserEmail(email);
-    }
-    setIsAuthenticated(true);
-  };
-
   const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (e) {
-      console.error("Sign out error", e);
-    }
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('user_email');
-    setIsAuthenticated(false);
-    setUserEmail('');
+    await signOut(auth);
+    window.location.reload();
   };
 
-  if (isLoadingAuth) {
+  const handleLogin = (token: string, email: string) => {
+    localStorage.setItem('token', token);
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="h-8 w-8 border-4 border-orange-200 border-t-orange-600 rounded-full animate-spin"></div>
+      <div className="h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="w-10 h-10 text-swyn-orange animate-spin" />
       </div>
     );
   }
 
-  if (!isAuthenticated) {
+  if (!user) {
     return <Auth onLogin={handleLogin} />;
   }
 
+  const userEmail = user.email || "";
+  
+  // Calculate initials like "SA" for the profile icon
+  const getInitials = (email: string) => {
+    if (!email) return "SA";
+    const prefix = email.split('@')[0];
+    if (prefix.length >= 2) {
+      return prefix.substring(0, 2).toUpperCase();
+    }
+    return email.substring(0, 2).toUpperCase();
+  };
+  const initials = getInitials(userEmail);
+
   return (
-    <div className="min-h-screen bg-gray-50 flex overflow-hidden">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 hidden md:flex md:flex-col shrink-0">
-        <div className="h-16 flex items-center px-6 border-b border-gray-200">
-          <SwynLogo className="h-8 w-8 mr-2" />
-          <span className="text-xl font-semibold text-gray-900 tracking-tight">SWYNMatch</span>
+    <div className="flex h-screen bg-[#FDFCFB]">
+      {/* Sidebar - Desktop */}
+      <aside className="w-72 bg-white border-r border-gray-100 p-8 flex flex-col z-20">
+        <div className="mb-12">
+          <SwynLogo size={32} />
         </div>
-        <nav className="flex-1 px-4 py-6 space-y-1">
-          <button 
-            onClick={() => setActiveTab('dashboard')}
-            className={`w-full flex items-center px-3 py-2.5 rounded-lg font-medium transition-colors ${
-              activeTab === 'dashboard' ? 'bg-orange-50 text-orange-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-            }`}
-          >
-            <Home className="h-5 w-5 mr-3" />
-            Dashboard
-          </button>
-          <button 
-            onClick={() => setActiveTab('find')}
-            className={`w-full flex items-center px-3 py-2.5 rounded-lg font-medium transition-colors ${
-              activeTab === 'find' ? 'bg-orange-50 text-orange-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-            }`}
-          >
-            <Search className="h-5 w-5 mr-3" />
-            Find Experts
-          </button>
-          <button 
-            onClick={() => setActiveTab('directory')}
-            className={`w-full flex items-center px-3 py-2.5 rounded-lg font-medium transition-colors ${
-              activeTab === 'directory' ? 'bg-orange-50 text-orange-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-            }`}
-          >
-            <UserCircle className="h-5 w-5 mr-3" />
-            Expert Directory
-          </button>
-          <button 
-            onClick={() => setActiveTab('history')}
-            className={`w-full flex items-center px-3 py-2.5 rounded-lg font-medium transition-colors ${
-              activeTab === 'history' ? 'bg-orange-50 text-orange-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-            }`}
-          >
-            <History className="h-5 w-5 mr-3" />
-            Match History
-          </button>
-          <button 
-            onClick={() => setActiveTab('chat')}
-            className={`w-full flex items-center px-3 py-2.5 rounded-lg font-medium transition-colors ${
-              activeTab === 'chat' ? 'bg-orange-50 text-orange-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-            }`}
-          >
-            <MessageSquare className="h-5 w-5 mr-3" />
-            Messages
-          </button>
-          <button 
-            onClick={() => setActiveTab('env')}
-            className={`w-full flex items-center px-3 py-2.5 rounded-lg font-medium transition-colors ${
-              activeTab === 'env' ? 'bg-orange-50 text-orange-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-            }`}
-          >
-            <Briefcase className="h-5 w-5 mr-3" />
-            Env Config
-          </button>
+
+        {/* Sections Header */}
+        <div className="px-4 mb-3">
+          <span className="text-[10px] font-bold text-swyn-orange/90 uppercase tracking-widest block font-sans">
+            Sections
+          </span>
+        </div>
+
+        <nav className="flex-1 space-y-1.5 overflow-y-auto pr-2 custom-scrollbar">
+          <NavItem 
+            active={activeTab === 'dashboard'} 
+            onClick={() => setActiveTab('dashboard')} 
+            icon={<Home className="w-5 h-5" />} 
+            label="Dashboard" 
+          />
+          <NavItem 
+            active={activeTab === 'find'} 
+            onClick={() => setActiveTab('find')} 
+            icon={<Search className="w-5 h-5" />} 
+            label="Find Experts" 
+          />
+          <NavItem 
+            active={activeTab === 'directory'} 
+            onClick={() => setActiveTab('directory')} 
+            icon={<Briefcase className="w-5 h-5" />} 
+            label="Expert Directory" 
+          />
+          <NavItem 
+            active={activeTab === 'history'} 
+            onClick={() => setActiveTab('history')} 
+            icon={<History className="w-5 h-5" />} 
+            label="Match History" 
+          />
+          <NavItem 
+            active={activeTab === 'chat'} 
+            onClick={() => setActiveTab('chat')} 
+            icon={<MessageSquare className="w-5 h-5" />} 
+            label="Messages" 
+          />
+          
+          {userEmail === 'info@swyn.in' && (
+            <NavItem 
+              active={activeTab === 'admin'} 
+              onClick={() => setActiveTab('admin')} 
+              icon={<ShieldCheck className="w-5 h-5" />} 
+              label="Admin Console" 
+            />
+          )}
         </nav>
-        <div className="p-4 border-t border-gray-200">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center justify-center px-3 py-2.5 rounded-lg font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors"
+
+        <div className="mt-8 pt-6 border-t border-gray-100">
+          <button 
+            onClick={handleLogout} 
+            className="w-full flex items-center px-4 py-3 text-sm font-semibold text-gray-500 hover:text-swyn-orange rounded-xl transition-all group"
           >
-             <LogOut className="h-5 w-5 mr-2" />
-             Sign Out
+            <LogOut className="w-5 h-5 mr-3 group-hover:-translate-x-1 transition-transform text-gray-400 group-hover:text-swyn-orange" /> 
+            Sign Out
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* Header */}
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0 z-10 relative">
-          <div className="flex-1 flex items-center md:hidden mr-4">
-             {/* Mobile Tabs */}
-             <select 
-               className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block w-full p-2.5"
-               value={activeTab}
-               onChange={(e) => setActiveTab(e.target.value as any)}
-             >
-               <option value="dashboard">Dashboard</option>
-               <option value="find">Find Experts</option>
-               <option value="directory">Expert Directory</option>
-               <option value="history">Match History</option>
-               <option value="chat">Messages</option>
-               <option value="env">Environment</option>
-             </select>
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#FAF9F6]">
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-gray-100 px-10 flex items-center justify-between sticky top-0 z-10 relative">
+          {/* Subtle gradient border line at bottom of the header */}
+          <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-r from-swyn-orange via-swyn-gold to-transparent"></div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+              {activeTab === 'dashboard' && 'Dashboard'}
+              {activeTab === 'find' && 'Find Experts'}
+              {activeTab === 'directory' && 'Directory'}
+              {activeTab === 'chat' && 'Messages'}
+              {activeTab === 'history' && 'Match History'}
+              {activeTab === 'admin' && 'Admin Console'}
+            </h1>
           </div>
-          <div className="hidden md:block flex-1">
-             <h1 className="text-xl font-semibold text-gray-800">
-               {activeTab === 'dashboard' ? 'Dashboard' : activeTab === 'directory' ? 'Directory' : activeTab === 'history' ? 'Match History' : activeTab === 'chat' ? 'Messages' : activeTab === 'env' ? 'System Environment' : 'Find Experts'}
-             </h1>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <button 
-              onClick={handleLogout}
-              className="md:hidden text-gray-500 hover:text-red-500 transition-colors p-2"
-              title="Sign out"
-            >
-              <LogOut className="h-5 w-5" />
-            </button>
-            <div className="h-10 w-10 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 font-semibold border border-orange-200 hidden md:flex">
-              {userEmail ? userEmail.substring(0, 2).toUpperCase() : 'AD'}
+
+          <div className="flex items-center space-x-6">
+            <div className="w-10 h-10 rounded-full bg-swyn-goldLight border border-swyn-goldMedium/30 flex items-center justify-center text-swyn-goldDark font-extrabold text-xs tracking-wider shadow-sm font-mono">
+              {initials}
             </div>
           </div>
         </header>
 
-        {/* Dashboard Content */}
-        <div className="flex-1 overflow-hidden p-4 md:p-8 flex flex-col bg-gray-50">
-          <div className="max-w-6xl mx-auto w-full h-full flex flex-col">
-             <AnimatePresence mode="wait">
-               {activeTab === 'dashboard' && (
-                 <motion.div
-                   key="dashboard"
-                   initial={{ opacity: 0, x: -10 }}
-                   animate={{ opacity: 1, x: 0 }}
-                   exit={{ opacity: 0, x: 10 }}
-                   transition={{ duration: 0.2 }}
-                   className="h-full overflow-auto pb-8"
-                 >
-                   <Dashboard onNavigate={setActiveTab} />
-                 </motion.div>
-               )}
-               {activeTab === 'directory' && (
-                 <motion.div
-                   key="directory"
-                   initial={{ opacity: 0, x: -10 }}
-                   animate={{ opacity: 1, x: 0 }}
-                   exit={{ opacity: 0, x: 10 }}
-                   transition={{ duration: 0.2 }}
-                   className="h-full overflow-auto"
-                 >
-                   <ExpertsDirectory />
-                 </motion.div>
-               )}
-               {activeTab === 'find' && (
-                 <motion.div
-                   key="find"
-                   initial={{ opacity: 0, x: -10 }}
-                   animate={{ opacity: 1, x: 0 }}
-                   exit={{ opacity: 0, x: 10 }}
-                   transition={{ duration: 0.2 }}
-                   className="h-full overflow-hidden"
-                 >
-                   <MatchEngine onMatchSaved={() => setActiveTab('history')} />
-                 </motion.div>
-               )}
-               {activeTab === 'history' && (
-                 <motion.div
-                   key="history"
-                   initial={{ opacity: 0, x: -10 }}
-                   animate={{ opacity: 1, x: 0 }}
-                   exit={{ opacity: 0, x: 10 }}
-                   transition={{ duration: 0.2 }}
-                   className="h-full overflow-hidden"
-                 >
-                   <MatchHistory />
-                 </motion.div>
-               )}
-               {activeTab === 'chat' && (
-                 <motion.div
-                   key="chat"
-                   initial={{ opacity: 0, x: -10 }}
-                   animate={{ opacity: 1, x: 0 }}
-                   exit={{ opacity: 0, x: 10 }}
-                   transition={{ duration: 0.2 }}
-                   className="h-full overflow-hidden"
-                 >
-                   <Chat currentUser={userEmail || 'Guest'} />
-                 </motion.div>
-               )}
-               {activeTab === 'env' && (
-                 <motion.div
-                   key="env"
-                   initial={{ opacity: 0, x: -10 }}
-                   animate={{ opacity: 1, x: 0 }}
-                   exit={{ opacity: 0, x: 10 }}
-                   transition={{ duration: 0.2 }}
-                   className="h-full overflow-auto pb-8"
-                 >
-                   <EnvDashboard />
-                 </motion.div>
-               )}
-             </AnimatePresence>
-          </div>
+        <div className="flex-1 overflow-y-auto bg-transparent p-10">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 10, scale: 0.99 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.99 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="h-full"
+            >
+              {activeTab === 'dashboard' && <Dashboard onNavigate={(tab) => setActiveTab(tab)} />}
+              {activeTab === 'find' && <MatchEngine />}
+              {activeTab === 'directory' && <ExpertsDirectory />}
+              {activeTab === 'chat' && <Chat />}
+              {activeTab === 'admin' && <AdminDashboard />}
+              {activeTab === 'history' && <MatchHistory />}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </main>
     </div>
   );
-}
+};
+
+const NavItem: React.FC<{ 
+  active: boolean; 
+  onClick: () => void; 
+  icon: React.ReactNode; 
+  label: string; 
+  badge?: string;
+}> = ({ active, onClick, icon, label, badge }) => (
+  <button 
+    onClick={onClick} 
+    className={`w-full flex items-center px-4 py-3 rounded-xl text-sm font-semibold transition-all relative group overflow-hidden ${
+      active 
+        ? 'bg-swyn-orange text-white shadow-md shadow-swyn-orange/10'
+        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+    }`}
+  >
+    <span className={`mr-3 transition-transform ${active ? 'text-white' : 'text-gray-400 group-hover:text-gray-600'}`}>
+      {icon}
+    </span>
+    {label}
+    {badge && (
+      <span className={`ml-auto px-2 py-0.5 rounded-full text-[10px] font-bold ${
+        active 
+          ? 'bg-white/20 text-white' 
+          : 'bg-[#FAF2DB] text-[#866110]'
+      }`}>
+        {badge}
+      </span>
+    )}
+  </button>
+);
+
+export default App;

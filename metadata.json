@@ -1,7 +1,6 @@
 {
   "name": "SwynMatch",
-  "description": "An AI-powered semantic matching engine to connect high-level fractional executives and experts with specific business needs.",
-  "requestFramePermissions": [],
+  "description": "Expert directory and matching engine",
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

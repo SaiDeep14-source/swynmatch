@@ -1,28 +1,43 @@
 import React from 'react';
 
-export default function SwynLogo({ className = "h-8 w-auto" }: { className?: string }) {
+export const SwynLogo: React.FC<{ className?: string; size?: number }> = ({ className = '', size = 32 }) => {
   return (
-    <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-      <defs>
-        <linearGradient id="goldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#D8BE73" />
-          <stop offset="100%" stopColor="#A88235" />
-        </linearGradient>
-      </defs>
-      
-      {/* Gold Pills */}
-      <rect x="7" y="32" width="34" height="56" rx="17" stroke="url(#goldGrad)" strokeWidth="6"/>
-      <rect x="59" y="32" width="34" height="56" rx="17" stroke="url(#goldGrad)" strokeWidth="6"/>
-      
-      {/* Orange center Pill */}
-      <rect x="30" y="25" width="40" height="73" rx="20" stroke="#F15A29" strokeWidth="6"/>
-      
-      {/* Gold Circles */}
-      <circle cx="24" cy="18" r="6" stroke="url(#goldGrad)" strokeWidth="6"/>
-      <circle cx="76" cy="18" r="6" stroke="url(#goldGrad)" strokeWidth="6"/>
-      
-      {/* Orange Circle */}
-      <circle cx="50" cy="10" r="7" stroke="#F15A29" strokeWidth="6"/>
-    </svg>
+    <div className={`flex items-center gap-3.5 ${className}`}>
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 200 200"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="shrink-0"
+      >
+        <defs>
+          <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#C59B27" />
+            <stop offset="35%" stopColor="#E5C158" />
+            <stop offset="70%" stopColor="#B3861B" />
+            <stop offset="100%" stopColor="#866110" />
+          </linearGradient>
+        </defs>
+        
+        {/* Left Person */}
+        <circle cx="54" cy="40" r="18" stroke="url(#goldGradient)" strokeWidth="16" fill="none" />
+        <rect x="18" y="70" width="72" height="112" rx="36" stroke="url(#goldGradient)" strokeWidth="16" fill="none" />
+
+        {/* Right Person */}
+        <circle cx="146" cy="40" r="18" stroke="url(#goldGradient)" strokeWidth="16" fill="none" />
+        <rect x="110" y="70" width="72" height="112" rx="36" stroke="url(#goldGradient)" strokeWidth="16" fill="none" />
+
+        {/* Center Person (Drawn last for the correct stacked overlapping effect) */}
+        <circle cx="100" cy="26" r="18" stroke="#F05A28" strokeWidth="16" fill="none" />
+        <rect x="64" y="58" width="72" height="128" rx="36" stroke="#F05A28" strokeWidth="16" fill="none" />
+      </svg>
+      <span className="text-xl font-black tracking-tight uppercase">
+        <span className="text-swyn-orange">SWYN</span>
+        <span className="text-swyn-gold">Match</span>
+      </span>
+    </div>
   );
-}
+};
+
+export default SwynLogo;

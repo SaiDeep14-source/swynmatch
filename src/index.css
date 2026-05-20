@@ -1,1 +1,18 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-swyn-orange: #F05A28;
+  --color-swyn-gold: #C59B27;
+  --color-swyn-goldLight: #FAF2DB;
+  --color-swyn-goldMedium: #E5C158;
+  --color-swyn-goldDark: #866110;
+  --color-swyn-orangeHover: #d4491c;
+}
+
+body {
+  background-color: rgb(249 250 251);
+  color: rgb(17 24 39);
+}
