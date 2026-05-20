@@ -32,6 +32,7 @@ interface Expert {
   availability: string;
   industry?: string;
   experience?: string;
+  customFields?: Record<string, string>;
 }
 
 const ExpertsDirectory: React.FC = () => {
@@ -65,7 +66,7 @@ const ExpertsDirectory: React.FC = () => {
 
   const fetchExperts = () => {
     setLoading(true);
-    authFetch('/api/experts')
+    fetch('/api/experts')
       .then(res => res.json())
       .then(data => {
         setExperts(data);
@@ -80,7 +81,7 @@ const ExpertsDirectory: React.FC = () => {
     // Fetch stored sheet URL config
     const token = localStorage.getItem('token');
     if (token) {
-      authFetch('/api/sheets/config', {
+      fetch('/api/sheets/config', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -105,7 +106,7 @@ const ExpertsDirectory: React.FC = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await authFetch('/api/sheets/sync', {
+      const response = await fetch('/api/sheets/sync', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -445,22 +446,20 @@ const ExpertsDirectory: React.FC = () => {
                 <th className="py-4 px-6">EXPERT</th>
                 <th className="py-4 px-6">INDUSTRY</th>
                 <th className="py-4 px-6">EXPERIENCE</th>
-                <th className="py-4 px-6">RATE</th>
-                <th className="py-4 px-6">RATING</th>
                 <th className="py-4 px-6 text-center">ACTION</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center">
+                  <td colSpan={4} className="py-16 text-center">
                     <RefreshCw className="w-8 h-8 text-orange-500 animate-spin mx-auto mb-2" />
                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Refreshing Repository</p>
                   </td>
                 </tr>
               ) : filteredExperts.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center text-gray-400 font-medium text-xs">
+                  <td colSpan={4} className="py-16 text-center text-gray-400 font-medium text-xs">
                     No matching expert records currently found.
                   </td>
                 </tr>
@@ -503,19 +502,6 @@ const ExpertsDirectory: React.FC = () => {
                       {/* Column 3: Experience */}
                       <td className="py-4 px-6 text-xs text-gray-650 font-semibold whitespace-nowrap">
                         {experienceVal}
-                      </td>
-
-                      {/* Column 4: Hourly rate */}
-                      <td className="py-4 px-6 text-xs font-bold text-gray-700 whitespace-nowrap">
-                        ${expert.hourlyRate}/hr
-                      </td>
-
-                      {/* Column 5: Rating */}
-                      <td className="py-4 px-6 text-xs font-bold text-gray-700 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 mr-1 shrink-0" />
-                          <span>{expert.rating || "4.8"}</span>
-                        </div>
                       </td>
 
                       {/* Column 6: Action */}
@@ -687,21 +673,7 @@ const ExpertsDirectory: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="border-t border-b border-gray-50 py-4 grid grid-cols-2 gap-4 text-center">
-                    <div>
-                      <span className="block text-[10px] text-gray-400 font-bold uppercase tracking-wider">Hourly Rate</span>
-                      <span className="text-sm font-bold text-gray-800">${activeProfile.hourlyRate}/hr</span>
-                    </div>
-                    <div>
-                      <span className="block text-[10px] text-gray-400 font-bold uppercase tracking-wider">Rating Score</span>
-                      <span className="text-sm font-bold text-gray-800 flex items-center justify-center">
-                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 mr-1" />
-                        {activeProfile.rating || "4.8"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
+                  <div className="space-y-2 pt-2">
                     <span className="block text-[10px] text-gray-400 font-bold uppercase tracking-wider">Expert Overview</span>
                     <p className="text-xs text-gray-500 leading-relaxed font-semibold">
                       {activeProfile.summary}
@@ -715,6 +687,45 @@ const ExpertsDirectory: React.FC = () => {
                       {activeProfile.availability || "Mon - Fri, Flexible"}
                     </div>
                   </div>
+
+                  {/* Comprehensive Spreadsheet or Fallback Sheet Details */}
+                  {(() => {
+                    const fields = activeProfile.customFields && Object.keys(activeProfile.customFields).length > 0 
+                      ? activeProfile.customFields 
+                      : {
+                          "Name": activeProfile.name,
+                          "Expertise / Designation": activeProfile.expertise,
+                          "Professional Overview": activeProfile.summary,
+                          "Availability Schedule": activeProfile.availability || "Flexible Schedule",
+                          "Primary Sector / Industry": activeProfile.industry || "General Consulting",
+                          "Experience Level": activeProfile.experience || "20+ Years"
+                        };
+
+                    return (
+                      <div className="space-y-3 pt-5 border-t border-gray-150">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1 px-2 rounded-md bg-orange-50 text-orange-600 font-bold text-[9px] uppercase tracking-wider">Sheet Roster Details</span>
+                          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">All Column Answers</span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2.5">
+                          {Object.entries(fields).map(([key, value]) => {
+                            if (!value || String(value).trim() === "") return null;
+
+                            return (
+                              <div key={key} className="p-3 bg-gray-50/60 border border-gray-100 rounded-xl transition-all hover:bg-gray-50 text-left">
+                                <span className="block text-[10px] text-orange-500 font-bold uppercase tracking-wide mb-1">
+                                  {key}
+                                </span>
+                                <span className="text-xs font-semibold text-gray-800 break-words leading-relaxed block whitespace-pre-line">
+                                  {String(value)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
