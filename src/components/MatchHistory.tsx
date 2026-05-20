@@ -3,6 +3,8 @@ import { MatchRecord } from '../types';
 import { History, User, Building, MapPin, Briefcase, DollarSign, Calendar, Target } from 'lucide-react';
 import { motion } from 'motion/react';
 import { authFetch } from '../lib/api';
+import { db, auth } from '../lib/firebase';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 
 export default function MatchHistory() {
   const [history, setHistory] = useState<MatchRecord[]>([]);
@@ -14,11 +16,42 @@ export default function MatchHistory() {
 
   const fetchHistory = async () => {
     try {
-      const res = await authFetch('/api/matches/history');
-      if (res.ok) {
-        const data = await res.json();
-        setHistory(data);
+      let dbMatches: MatchRecord[] = [];
+      const user = auth.currentUser;
+      if (user) {
+        try {
+          const q = query(
+            collection(db, "matches"), 
+            where("userId", "==", user.uid)
+          );
+          const snap = await getDocs(q);
+          
+          if (!snap.empty) {
+             const docs = snap.docs.map(d => ({id: d.id, ...d.data()} as MatchRecord));
+             dbMatches = docs.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          }
+        } catch (dbErr) {
+          console.warn("Client side fetch history warning:", dbErr);
+        }
       }
+      
+      const res = await authFetch('/api/matches/history');
+      let apiMatches: MatchRecord[] = [];
+      if (res.ok) {
+        apiMatches = await res.json();
+      }
+      
+      const mergedMap = new Map();
+      apiMatches.forEach(m => mergedMap.set(m.id || m.createdAt, m));
+      dbMatches.forEach(m => mergedMap.set(m.id || m.createdAt, m));
+      
+      const mergedList = Array.from(mergedMap.values()).sort((a: any, b: any) => {
+        const dateA = new Date(a.createdAt || a.timestamp || 0).getTime();
+        const dateB = new Date(b.createdAt || b.timestamp || 0).getTime();
+        return dateB - dateA;
+      });
+      
+      setHistory(mergedList);
     } catch (err) {
       console.error('Failed to fetch history', err);
     } finally {
