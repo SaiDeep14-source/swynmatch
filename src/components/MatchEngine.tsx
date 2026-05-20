@@ -255,7 +255,7 @@ const MatchEngine: React.FC = () => {
               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div className="flex gap-4">
                   <div className="w-12 h-12 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-lg shrink-0">
-                    {match.name?.[0] || 'E'}
+                    {String(match?.name || "E").charAt(0).toUpperCase()}
                   </div>
 
                   <div>
