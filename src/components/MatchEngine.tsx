@@ -20,7 +20,7 @@ import {
   Users
 } from 'lucide-react';
 import SwynLogo from './SwynLogo';
-
+import { authFetch } from '../lib/api';
 interface Expert {
   id: string;
   name: string;
@@ -69,7 +69,7 @@ const MatchEngine: React.FC = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await authauthfetch('/api/match', {
+      const response = await fetch('/api/match', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -110,7 +110,7 @@ const MatchEngine: React.FC = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await authfetch('/api/matches/save', {
+      const response = await authFetch('/api/matches/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
